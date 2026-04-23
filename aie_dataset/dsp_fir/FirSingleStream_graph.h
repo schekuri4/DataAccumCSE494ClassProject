@@ -1,0 +1,75 @@
+/*
+Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+SPDX-License-Identifier: MIT
+
+SOURCE: Xilinx/Vitis-Tutorials, branch 2024.2
+PATH: AI_Engine_Development/AIE/Design_Tutorials/02-super_sampling_rate_fir/SingleKernel/aie/graph.h
+DOMAIN: DSP — FIR Filter (Stream interface)
+INTERFACE: Stream (connect<stream>), PLIO at 500 MHz, plio_64_bits
+KEY PATTERNS:
+  - connect<stream> (explicit stream type)
+  - kernel::create_object<>() template instantiation with taps vector
+  - headers() specification for template kernel
+  - Nested graph class (FIRGraph_OneKernel inside TopGraph)
+  - cint16 coefficient initialization with complex literals
+*/
+
+#pragma once
+
+#include <adf.h>
+#include "system_settings.h"
+#include "aie_kernels.h"
+
+using namespace adf;
+
+std::vector<cint16> taps = std::vector<cint16>({
+	{   -82,  -253},{     0,  -204},{    11,   -35},{  -198,   273},
+	{  -642,   467},{ -1026,   333},{  -927,     0},{  -226,   -73},
+	{   643,   467},{   984,  1355},{   550,  1691},{     0,   647},
+	{   538, -1656},{  2860, -3936},{  6313, -4587},{  9113, -2961},
+	{  9582,     0},{  7421,  2411},{  3936,  2860},{  1023,  1409},
+	{  -200,  -615},{     0, -1778},{   517, -1592},{   467,  -643},
+	{  -192,   140},{  -882,   287},{ -1079,     0},{  -755,  -245},
+	{  -273,  -198},{    22,    30},{    63,   194},{     0,   266}
+});
+
+std::vector<cint16> taps_aie(taps.rbegin(),taps.rend());
+
+const int SHIFT = 0;
+
+class FIRGraph_OneKernel: public adf::graph
+{
+private:
+	kernel k;
+
+public:
+	input_port in;
+	output_port out;
+
+	FIRGraph_OneKernel()
+	{
+		k = kernel::create_object<SingleStream::FIR_SingleStream<NUM_SAMPLES,SHIFT>>(taps_aie);
+
+		connect<stream> net0(in, k.in[0]);
+		connect<stream> net1(k.out[0], out);
+
+		source(k) = "aie_kernels/FirSingleStream.cpp";
+		headers(k) = {"aie_kernels/FirSingleStream.h"};
+		runtime<ratio>(k) = 0.9;
+	}
+};
+
+class TopGraph: public adf::graph
+{
+public:
+	FIRGraph_OneKernel G1;
+
+	input_plio plin  = input_plio::create("64 bits in G1",  plio_64_bits, "data/PhaseIn_0.txt", 500);
+	output_plio plout = output_plio::create("64 bits out G1", plio_64_bits, "data/Output_0.txt",  500);
+
+	TopGraph()
+	{
+		connect(plin.out[0], G1.in);
+		connect(G1.out, plout.in[0]);
+	}
+};

@@ -1,0 +1,32 @@
+/*
+SOURCE: Xilinx/Vitis-Tutorials, branch 2024.2
+PATH: AI_Engine_Development/AIE/Feature_Tutorials/03-rtp-reconfiguration/async_array_rtp/aie/vect_add.cc
+DOMAIN: Runtime Parameter Reconfiguration
+INTERFACE: Window
+KEY INTRINSICS: aie::begin_vector, aie::vector, aie::add
+VECTOR TYPES: aie::vector<int32,ELEM>
+*/
+
+/*
+Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+SPDX-License-Identifier: MIT
+*/
+#include <aie_api/aie.hpp>
+#include <aie_api/aie_adf.hpp>
+#include <aie_api/utils.hpp>
+using namespace adf;
+const int ELEM=16;
+template<int NUM>
+void vect_add(input_buffer<int32,extents<NUM>>& __restrict in,output_buffer<int32,extents<NUM>>& __restrict out,const int32 (&value)[NUM]){
+	auto inIter=aie::begin_vector<ELEM>(in);
+	auto outIter=aie::begin_vector<ELEM>(out);
+	auto vIter=aie::begin_vector<ELEM>(value);
+	for(int i=0;i<NUM/ELEM;i++)
+	chess_prepare_for_pipelining
+	{
+		aie::vector<int32,ELEM> vdata=*inIter++;
+		aie::vector<int32,ELEM> vv=*vIter++;
+		aie::vector<int32,ELEM> vresult=aie::add(vdata,vv);
+		*outIter++=vresult;
+	}
+}

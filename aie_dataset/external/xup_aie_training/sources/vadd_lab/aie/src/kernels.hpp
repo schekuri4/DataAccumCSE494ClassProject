@@ -1,0 +1,23 @@
+/*
+SOURCE: Xilinx/xup_aie_training, branch main
+PATH: sources/vadd_lab/aie/src/kernels.hpp
+DOMAIN: AIE Source
+INTERFACE: Window, Stream
+KEY INTRINSICS: Unknown
+VECTOR TYPES: Unknown
+*/
+
+// Copyright (C) 2023 Advanced Micro Devices, Inc
+//
+// SPDX-License-Identifier: MIT
+
+#ifndef __KERNELS_H__
+#define __KERNELS_H__
+
+#include <adf/stream/types.h>
+
+void aie_vadd_stream(input_stream_int32 *in0, input_stream_int32 *in1, output_stream_int32 *out);
+
+void aie_vadd_window(input_window<int32> *in0, input_window<int32> *in1, output_window<int32> *out);
+
+#endif /**********__KERNELS_H__**********/

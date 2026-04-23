@@ -1,0 +1,245 @@
+/*
+SOURCE: Xilinx/Vitis_Libraries, branch main
+PATH: dsp/L1/include/aie/euclidean_distance_traits.hpp
+DOMAIN: AIE Source
+INTERFACE: Unknown
+KEY INTRINSICS: Unknown
+VECTOR TYPES: v32accfloat
+*/
+
+/*
+ * Copyright (C) 2019-2022, Xilinx, Inc.
+ * Copyright (C) 2022-2025, Advanced Micro Devices, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#ifndef _DSPLIB_EUCLIDEAN_DISTANCE_TRAITS_HPP_
+#define _DSPLIB_EUCLIDEAN_DISTANCE_TRAITS_HPP_
+
+/*
+    Euclidean Distance traits.
+    This file contains sets of overloaded, templatized and specialized templatized functions which
+    encapsulate properties of the intrinsics used by the main kernal class. Specifically,
+    this file does not contain any vector types or intrinsics since it is required for construction
+    and therefore must be suitable for the aie compiler graph-level compilation.
+*/
+
+#include <stdio.h>
+#include <type_traits>
+#include <adf.h>
+#include "device_defs.h"
+#include "aie_api/aie_adf.hpp"
+#include "fir_utils.hpp"
+
+#ifndef INLINE_DECL
+#define INLINE_DECL inline __attribute__((always_inline))
+#endif
+
+#ifndef NOINLINE_DECL
+#define NOINLINE_DECL inline __attribute__((noinline))
+#endif
+#define ROUND(X, Y) (((X % Y) > ((Y + 1) / 2)) ? ((int)(X + Y - 1) / (int)Y) : ((int)X / (int)Y))
+#define MASK_LOWEST_BITS 0x00FFu
+#define MASK_UPPER_BITS 0x7F00u
+#define EXPONENT_ADJUSTMENT_CONSTANT 0x4000u
+#define NUM_OF_PARALLEL_ACCESS_LUT 4
+
+// using namespace std;
+namespace xf {
+namespace dsp {
+namespace aie {
+namespace euclidean_distance {
+
+// Constants for Euclidean Distance
+// static constexpr unsigned int kMaxBytesLoadOnAie = __MAX_READ_WRITE__ / 8; // Max number of bytes (256/8) or (512/8)
+// Load on AIE
+static constexpr unsigned int kMaxBytesLoadOnAie = 32; // Max number of bytes (256/8) or (512/8) Load on AIE
+static constexpr unsigned int kMaxBufferLenOnAieInBytes = __DATA_MEM_BYTES__; // Max buffer Length
+static constexpr unsigned int kLeftShiftFactor2 = 2;                          // MulFactor2
+static constexpr unsigned int kRightShiftFactor2 = 2;                         // DivisiableFactor2
+static constexpr unsigned int kRightShiftFactor1 = 1;                         // DivisiableFactor1
+static constexpr unsigned int kBuffSize16Byte =
+    (__V_REGSIZE__ / 8); // 128-bit AIE-1, AIE-ML and  AIE-MLv2 buffer size in Bytes
+static constexpr unsigned int kBuffSize32Byte =
+    (__W_REGSIZE__ / 8); // 256-bit AIE-1, AIE-ML and  AIE-MLv2 buffer size in Bytes
+static constexpr unsigned int kBuffSize64Byte =
+    (__X_REGSIZE__ / 8); // 512-bit AIE-1, AIE-ML and  AIE-MLv2 buffer size in Bytes
+static constexpr unsigned int kBuffSize128Byte =
+    (__Y_REGSIZE__ / 8); // 1024-bit AIE-1, AIE-ML and  AIE-MLv2 buffer size in Bytes
+
+static constexpr unsigned int kUnrollFactor = 8;   // Unroll Factor
+static constexpr unsigned int kFixedDimOfED = 4;   // Unroll Factor
+static constexpr unsigned int kUpshiftFactor2 = 2; // v32accfloat
+static constexpr unsigned int kNumOfKernels = 2;   // Num of kernels in ED is 2
+
+// Function to return the default lanes based on choosen architecture
+template <typename TT_DATA>
+INLINE_DECL constexpr unsigned int fnEDNumLanes() {
+    return 16; // defualt return for AIE2
+};
+
+// Function to return the default MULS/MACS based on choosen architecture
+template <typename TT_DATA>
+INLINE_DECL constexpr unsigned int fnEDNumMuls() {
+    return 256; // defualt return for AIE2
+};
+
+// Function to return the default sample size of P data
+template <typename TT_DATA>
+INLINE_DECL constexpr unsigned int fnSampleSize() {
+    return 8; // defualt sample size is 8
+};
+
+// for io buffer cases
+// function to return the number of acc's lanes for a type combo
+#if (__HAS_ACCUM_PERMUTES__ == 1)
+template <>
+INLINE_DECL constexpr unsigned int fnEDNumLanes<float>() {
+    return 8;
+}; //
+
+// function to return the number of multiplications for a type combo
+template <>
+INLINE_DECL constexpr unsigned int fnEDNumMuls<float>() {
+    return 8;
+}; //
+#endif
+
+#if (__HAS_ACCUM_PERMUTES__ == 0)
+// AIE-2
+template <>
+INLINE_DECL constexpr unsigned int fnEDNumLanes<float>() {
+    return 16;
+}; //
+template <>
+INLINE_DECL constexpr unsigned int fnEDNumLanes<bfloat16>() {
+    return 16;
+}; //
+
+// function to return the number of multiplications for a type combo
+template <>
+INLINE_DECL constexpr unsigned int fnEDNumMuls<float>() {
+    return 16;
+}; //
+template <>
+INLINE_DECL constexpr unsigned int fnEDNumMuls<bfloat16>() {
+    return 16;
+}; //
+#endif
+
+// function to return number of samples for given data type of P Data
+template <>
+INLINE_DECL constexpr unsigned int fnSampleSize<float>() {
+    return 32;
+}; //
+
+#if (__HAS_ACCUM_PERMUTES__ == 0)
+template <>
+INLINE_DECL constexpr unsigned int fnSampleSize<bfloat16>() {
+    return 16;
+}; //
+#endif
+
+// Function returns number of columns used by MUL/MACs in Euclidean Distance
+template <typename TT_DATA>
+INLINE_DECL constexpr unsigned int fnGetNumofMULs() {
+    return fnEDNumMuls<TT_DATA>();
+};
+
+// Function to return the number of lanes based on given data types
+template <typename TT_DATA>
+INLINE_DECL constexpr unsigned int fnGetNumofLanes() {
+    return fnEDNumLanes<TT_DATA>();
+};
+
+// Function to return the number of points based on given data types
+template <typename TT_DATA>
+INLINE_DECL constexpr unsigned int fnGetNumofPoints() {
+    return (fnEDNumMuls<TT_DATA>() / fnEDNumLanes<TT_DATA>());
+};
+
+// Function to return Maximum supported length based on given DATA TYPE.
+// Max Length is being calculated regarding single buffer size
+template <typename TT_DATA>
+INLINE_DECL constexpr unsigned int getMaxLen() {
+    return (((kMaxBufferLenOnAieInBytes) / kFixedDimOfED) / sizeof(TT_DATA));
+};
+
+// Function to return Minimum supported length based on given DATA TYPE.
+template <typename TT_DATA>
+INLINE_DECL constexpr unsigned int getMinLen() {
+    // return ((kMaxBytesLoadOnAie / sizeof(TT_DATA)));
+    return 32; // hardcoded min length as 32 for all data types, is to be revisited in 26.1
+};
+
+// Function to return true or false by checking given length is in range or not
+template <typename TT_DATA, unsigned int sigLen>
+constexpr bool isLenInRange() {
+    unsigned int minDataLoad = (kMaxBytesLoadOnAie / sizeof(TT_DATA));
+    bool checkLen = false;
+
+    if ((sigLen >= getMinLen<TT_DATA>()) && (sigLen <= getMaxLen<TT_DATA>())) {
+        checkLen = (((sigLen % minDataLoad) == 0) ? true : false);
+    }
+    return checkLen;
+};
+
+// float and bfloat16 are only the supported data types
+// Configuration Defensive check functions
+//----------------------------------------------------------------------
+
+// Configuration Defensive check function for input data types whether supported or not
+template <typename TT_DATA>
+INLINE_DECL constexpr bool fnCheckDataTypesOfInputs() {
+    return false;
+};
+#if (__HAS_ACCUM_PERMUTES__ == 1)
+template <>
+INLINE_DECL constexpr bool fnCheckDataTypesOfInputs<float>() {
+    return true;
+};
+#endif
+
+#if (__HAS_ACCUM_PERMUTES__ == 0)
+template <>
+INLINE_DECL constexpr bool fnCheckDataTypesOfInputs<float>() {
+    return true;
+};
+template <>
+INLINE_DECL constexpr bool fnCheckDataTypesOfInputs<bfloat16>() {
+    return true;
+};
+#endif
+// Configuration Defensive check function to check Length of F Signal and G Signal
+template <typename TT_DATA, unsigned int TP_SIG_LEN>
+INLINE_DECL constexpr bool fnCheckLenOfData() {
+    return (isLenInRange<TT_DATA, TP_SIG_LEN>() ? true : false);
+}
+
+// Function which return true or false if Given Number is power of 2 or not
+template <unsigned int TP_DATA>
+INLINE_DECL constexpr bool isPowerOfTwo() {
+    return (((TP_DATA) && !(TP_DATA & (TP_DATA - 1))) ? true : false);
+};
+
+// Function which return true or false if Given Dimension is less than or equal to 4
+template <unsigned int TP_DIM>
+INLINE_DECL constexpr bool fnCheckforDimension() {
+    return ((TP_DIM > 1 && TP_DIM <= kFixedDimOfED) ? true : false);
+};
+} //  End of namespace euclidean_distance {
+} //  End of namespace aie {
+} //  End of namespace dsp {
+} // End of  namespace xf {
+
+#endif // _DSPLIB_EUCLIDEAN_DISTANCE_TRAITS_HPP_

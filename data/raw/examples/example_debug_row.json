@@ -1,0 +1,27 @@
+{
+  "source_id": "aie-debug-001",
+  "split": "train",
+  "task_type": "debug",
+  "difficulty": "medium",
+  "platform": "versal",
+  "kernel_language": "aie-cpp",
+  "tags": ["graph", "window", "compile-error"],
+  "system": "You are an expert on AMD/Xilinx Versal AIE kernels, ADF graphs, and debug workflows. Prioritize root-cause analysis and concrete fixes for AIE build, connectivity, and runtime issues.",
+  "user": {
+    "goal": "Diagnose the AIE issue and propose the smallest correct fix.",
+    "context": "The following AIE graph fails during build after wiring a kernel to a window interface.",
+    "artifacts": {
+      "graph_cpp": "#include <adf.h>\nusing namespace adf;\nclass my_graph : public graph {\npublic:\n  port<input> in;\n  port<output> out;\n  kernel k;\n  my_graph() {\n    k = kernel::create(my_kernel);\n    source(k) = \"my_kernel.cpp\";\n    connect<window<128>>(in, k.in[0]);\n    connect<stream>(k.out[0], out);\n    runtime<ratio>(k) = 0.9;\n  }\n};",
+      "kernel_cpp": "#include <adf.h>\nvoid my_kernel(input_window_int32* in, output_window_int32* out) {\n  for (int i = 0; i < 64; ++i) {\n    window_writeincr(out, window_readincr(in) + 1);\n  }\n}",
+      "error_log": "ERROR: [aiecompiler 77-752] window size mismatch on port connection for kernel 'my_kernel'."
+    },
+    "constraints": [
+      "Explain why the mismatch happens.",
+      "Show the corrected graph or kernel change.",
+      "Keep the answer concise."
+    ]
+  },
+  "assistant": {
+    "response": "The failure is caused by a mismatch between the graph connection window size and what the kernel actually consumes. The graph declares `connect<window<128>>(in, k.in[0]);`, which is 128 bytes, but the kernel reads 64 `int32` values, which requires 256 bytes. For `input_window_int32`, the window size must match the data movement implied by the kernel loop.\n\nA minimal fix is to change the graph connection to 256 bytes:\n\n```cpp\nconnect<window<256>>(in, k.in[0]);\n```\n\nIf the intended window really is 128 bytes, then the kernel loop should read only 32 `int32` elements instead of 64. The better fix here is the graph change because it matches the existing kernel behavior."
+  }
+}

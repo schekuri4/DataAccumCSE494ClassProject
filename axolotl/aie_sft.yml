@@ -1,0 +1,84 @@
+base_model: mistralai/Mistral-7B-Instruct-v0.3
+tokenizer_type: AutoTokenizer
+trust_remote_code: false
+
+chat_template: tokenizer_default_fallback_chatml
+
+datasets:
+  - path: data/processed/train.jsonl
+    type: chat_template
+    ds_type: json
+    field_messages: messages
+    message_property_mappings:
+      role: role
+      content: content
+    roles:
+      assistant:
+        - assistant
+      user:
+        - user
+      system:
+        - system
+    roles_to_train:
+      - assistant
+    train_on_eos: turn
+
+test_datasets:
+  - path: data/processed/validation.jsonl
+    type: chat_template
+    ds_type: json
+    field_messages: messages
+    message_property_mappings:
+      role: role
+      content: content
+    roles:
+      assistant:
+        - assistant
+      user:
+        - user
+      system:
+        - system
+    roles_to_train:
+      - assistant
+    train_on_eos: turn
+
+special_tokens:
+  eos_token: <|im_end|>
+
+adapter: qlora
+load_in_4bit: true
+strict: false
+
+sequence_len: 4096
+sample_packing: true
+pad_to_sequence_len: true
+
+micro_batch_size: 1
+gradient_accumulation_steps: 8
+num_epochs: 3
+learning_rate: 0.0002
+optimizer: adamw_torch_fused
+lr_scheduler: cosine
+warmup_ratio: 0.03
+
+lora_r: 32
+lora_alpha: 64
+lora_dropout: 0.05
+lora_target_linear: true
+
+train_on_inputs: false
+group_by_length: true
+
+bf16: auto
+tf32: auto
+
+val_set_size: 0.0
+eval_strategy: steps
+eval_steps: 50
+save_strategy: steps
+save_steps: 50
+save_total_limit: 2
+logging_steps: 5
+
+output_dir: ./outputs/aie-sft
+dataset_prepared_path: ./prepared/aie-sft

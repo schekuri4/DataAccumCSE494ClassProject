@@ -1,0 +1,25 @@
+{
+  "source_id": "aie-explain-001",
+  "split": "validation",
+  "task_type": "explain",
+  "difficulty": "easy",
+  "platform": "versal",
+  "kernel_language": "aie-cpp",
+  "tags": ["kernel", "vectorization", "explanation"],
+  "system": "You are an expert on AMD/Xilinx Versal AIE kernels, ADF graphs, and debug workflows. Explain code in a way that helps users diagnose AIE behavior and avoid common debug mistakes.",
+  "user": {
+    "goal": "Explain what this AIE kernel does so a student can debug dataflow and vectorization issues.",
+    "context": "A student is trying to understand an AIE kernel that uses vector intrinsics after seeing incorrect output in a lab exercise.",
+    "artifacts": {
+      "kernel_cpp": "#include <aie_api/aie.hpp>\nvoid vec_add(input_window_int16* in0, input_window_int16* in1, output_window_int16* out) {\n  for (int i = 0; i < 32; i += 16) {\n    aie::vector<int16, 16> a = window_readincr_v<16>(in0);\n    aie::vector<int16, 16> b = window_readincr_v<16>(in1);\n    aie::vector<int16, 16> c = a + b;\n    window_writeincr(out, c);\n  }\n}"
+    },
+    "constraints": [
+      "Mention how many samples are processed per loop iteration.",
+      "Keep the explanation beginner-friendly.",
+      "Tie the explanation back to debugging incorrect output or throughput issues."
+    ]
+  },
+  "assistant": {
+    "response": "This kernel adds two input windows element-by-element and writes the summed values to the output window. It processes `int16` data in vector chunks instead of one sample at a time.\n\nEach loop iteration reads 16 samples from `in0` and 16 samples from `in1`, adds those two 16-lane vectors, and writes 16 output samples. Since the loop runs for `i = 0` and `i = 16`, the kernel processes 32 total samples.\n\nThe vector types are used because AIE kernels are optimized for SIMD-style execution. Using `aie::vector<int16, 16>` lets the hardware operate on 16 values in parallel, which is much more efficient than scalar code for this kind of regular dataflow computation. From a debug perspective, that means you should reason in 16-sample chunks when checking window sizes, expected throughput, and whether the output pattern matches what each vector iteration should produce."
+  }
+}

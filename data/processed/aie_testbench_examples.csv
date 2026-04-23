@@ -1,0 +1,1870 @@
+﻿"variant","split","source","instruction","context","expected_response"
+"bug_fix_pair","validation","https://github.com/arc-research-lab/SSR/blob/main/SSR_Designs_Experiments/SSR_Hybrid/aie/layer3/mm3_kernel0_L3_B0_A0_C3.cc","Analyze the difference between these two AIE sources and describe the bug, the observed behavior, and the correction.","Buggy version:
+#include <adf.h>
+#include <stdio.h>
+#include ""para_L3.h""
+#include ""parameter_L3_B0_A0_C3.h""
+
+void mm3_kernel0_L3_B0_A0_C3(input_window_int8* __restrict matA, 
+		output_stream_acc48* __restrict matC){
+    
+    v32int8 *restrict matB = (v32int8 *)matB_LUT0;
+
+	v64int8 chess_storage(xa) buf_matA0=undef_v64int8(); //
+	v64int8 chess_storage(xb) buf_matA1=undef_v64int8(); //
+			
+	v32int8 chess_storage(wc0) buf_matB0=undef_v32int8(); // 
+	v32int8 chess_storage(wc1) buf_matB1=undef_v32int8(); // 
+
+    for (int seq=0;seq<L3_bound_seq;seq++)
+	    chess_prepare_for_pipelining
+	    chess_loop_range(L3_bound_seq,)
+    {// SEQ/4
+        
+        for (int oc=0;oc<L3_bound_oc;oc++)
+	    chess_prepare_for_pipelining
+	    chess_loop_range(L3_bound_oc,)
+        { //OC/4
+            v8acc48 acc0=null_v8acc48();
+            v8acc48 acc1=null_v8acc48();
+
+            buf_matA0=upd_w(buf_matA0,0,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB0=*matB;
+            matB +=L3_jumpB0/32;
+
+	        buf_matA0=upd_w(buf_matA0,1,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+
+            //K iteration 0
+            acc0=mac8(acc0,buf_matA0,0,0x0000,8,0x3120,buf_matB0,0,0x8800,2,0x3210); 
+            buf_matA1=upd_w(buf_matA1,0,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB1=*matB;
+            matB +=L3_jumpB0/32;
+
+            acc1=mac8(acc1,buf_matA0,0,0x0000,8,0x3120,buf_matB1,0,0x8800,2,0x3210); 
+            buf_matA1=upd_w(buf_matA1,1,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB0=*matB;
+            matB +=L3_jumpB0/32;
+
+
+            //K iteration 1
+            acc0=mac8(acc0,buf_matA1,0,0x0000,8,0x3120,buf_matB0,0,0x8800,2,0x3210); 
+            buf_matA0=upd_w(buf_matA0,0,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB1=*matB;
+            matB +=L3_jumpB0/32;
+
+            acc1=mac8(acc1,buf_matA1,0,0x0000,8,0x3120,buf_matB1,0,0x8800,2,0x3210);
+            buf_matA0=upd_w(buf_matA0,1,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB0=*matB;
+            matB +=L3_jumpB0/32;
+            //K iteration 2
+            acc0=mac8(acc0,buf_matA0,0,0x0000,8,0x3120,buf_matB0,0,0x8800,2,0x3210); 
+            buf_matA1=upd_w(buf_matA1,0,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB1=*matB;
+            matB +=L3_jumpB0/32;
+
+            acc1=mac8(acc1,buf_matA0,0,0x0000,8,0x3120,buf_matB1,0,0x8800,2,0x3210); 
+            buf_matA1=upd_w(buf_matA1,1,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB0=*matB;
+            matB +=L3_jumpB0/32;
+
+
+            //K iteration 3
+            acc0=mac8(acc0,buf_matA1,0,0x0000,8,0x3120,buf_matB0,0,0x8800,2,0x3210); 
+            buf_matA0=upd_w(buf_matA0,0,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB1=*matB;
+            matB +=L3_jumpB0/32;
+
+            acc1=mac8(acc1,buf_matA1,0,0x0000,8,0x3120,buf_matB1,0,0x8800,2,0x3210);
+            buf_matA0=upd_w(buf_matA0,1,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB0=*matB;
+            matB +=L3_jumpB0/32;
+            //K iteration 4
+            acc0=mac8(acc0,buf_matA0,0,0x0000,8,0x3120,buf_matB0,0,0x8800,2,0x3210); 
+            buf_matA1=upd_w(buf_matA1,0,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB1=*matB;
+            matB +=L3_jumpB0/32;
+
+            acc1=mac8(acc1,buf_matA0,0,0x0000,8,0x3120,buf_matB1,0,0x8800,2,0x3210); 
+            buf_matA1=upd_w(buf_matA1,1,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB0=*matB;
+            matB +=L3_jumpB0/32;
+
+
+            //K iteration 5
+            acc0=mac8(acc0,buf_matA1,0,0x0000,8,0x3120,buf_matB0,0,0x8800,2,0x3210); 
+            buf_matA0=upd_w(buf_matA0,0,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB1=*matB;
+            matB +=L3_jumpB0/32;
+
+            acc1=mac8(acc1,buf_matA1,0,0x0000,8,0x3120,buf_matB1,0,0x8800,2,0x3210);
+            buf_matA0=upd_w(buf_matA0,1,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB0=*matB;
+            matB +=L3_jumpB0/32;
+            
+            //K iteration 6
+            acc0=mac8(acc0,buf_matA0,0,0x0000,8,0x3120,buf_matB0,0,0x8800,2,0x3210);
+            buf_matA1=upd_w(buf_matA1,0,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB1=*matB;
+            matB +=L3_jumpB0/32;
+
+            acc1=mac8(acc1,buf_matA0,0,0x0000,8,0x3120,buf_matB1,0,0x8800,2,0x3210);
+            buf_matA1=upd_w(buf_matA1,1,window_read_v32(matA));
+	        window_decr(matA,L3_jumpA2);
+	        buf_matB0=*matB;
+            matB +=L3_jumpB0/32;
+
+
+            //K iteration 7
+            acc0=mac8(acc0,buf_matA1,0,0x0000,8,0x3120,buf_matB0,0,0x8800,2,0x3210);
+// BUG_INJECTED: Removed output token write to create producer/consumer imbalance and potential stream deadlock.
+// ORIGINAL: writeincr_v8(matC,acc0);
+
+            buf_matB1=*matB;
+            matB +=L3_jumpB0/32;
+
+            acc1=mac8(acc1,buf_matA1,0,0x0000,8,0x3120,buf_matB1,0,0x8800,2,0x3210);
+            writeincr_v8(matC,acc1);
+        }
+        window_incr(matA,L3_jumpA1);
+        matB -=L3_jumpB3/32;
+    }
+}
+
+Correct version:
+#include <adf.h>
+#include <stdio.h>
+#include ""para_L3.h""
+#include ""parameter_L3_B0_A0_C3.h""
+
+void mm3_kernel0_L3_B0_A0_C3(input_window_int8* __restrict matA, 
+		output_stream_acc48* __restrict matC){
+    
+    v32int8 *restrict matB = (v32int8 *)matB_LUT0;
+
+	v64int8 chess_storage(xa) buf_matA0=undef_v64int8(); //
+	v64int8 chess_storage(xb) buf_matA1=undef_v64int8(); //
+			
+	v32int8 chess_storage(wc0) buf_matB0=undef_v32int8(); // 
+	v32int8 chess_storage(wc1) buf_matB1=undef_v32int8(); // 
+
+    for (int seq=0;seq<L3_bound_seq;seq++)
+	    chess_prepare_for_pipelining
+	    chess_loop_range(L3_bound_seq,)
+    {// SEQ/4
+        
+        for (int oc=0;oc<L3_bound_oc;oc++)
+	    chess_prepare_for_pipelining
+	    chess_loop_range(L3_bound_oc,)
+        { //OC/4
+            v8acc48 acc0=null_v8acc48();
+            v8acc48 acc1=null_v8acc48();
+
+            buf_matA0=upd_w(buf_matA0,0,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB0=*matB;
+            matB +=L3_jumpB0/32;
+
+	        buf_matA0=upd_w(buf_matA0,1,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+
+            //K iteration 0
+            acc0=mac8(acc0,buf_matA0,0,0x0000,8,0x3120,buf_matB0,0,0x8800,2,0x3210); 
+            buf_matA1=upd_w(buf_matA1,0,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB1=*matB;
+            matB +=L3_jumpB0/32;
+
+            acc1=mac8(acc1,buf_matA0,0,0x0000,8,0x3120,buf_matB1,0,0x8800,2,0x3210); 
+            buf_matA1=upd_w(buf_matA1,1,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB0=*matB;
+            matB +=L3_jumpB0/32;
+
+
+            //K iteration 1
+            acc0=mac8(acc0,buf_matA1,0,0x0000,8,0x3120,buf_matB0,0,0x8800,2,0x3210); 
+            buf_matA0=upd_w(buf_matA0,0,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB1=*matB;
+            matB +=L3_jumpB0/32;
+
+            acc1=mac8(acc1,buf_matA1,0,0x0000,8,0x3120,buf_matB1,0,0x8800,2,0x3210);
+            buf_matA0=upd_w(buf_matA0,1,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB0=*matB;
+            matB +=L3_jumpB0/32;
+            //K iteration 2
+            acc0=mac8(acc0,buf_matA0,0,0x0000,8,0x3120,buf_matB0,0,0x8800,2,0x3210); 
+            buf_matA1=upd_w(buf_matA1,0,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB1=*matB;
+            matB +=L3_jumpB0/32;
+
+            acc1=mac8(acc1,buf_matA0,0,0x0000,8,0x3120,buf_matB1,0,0x8800,2,0x3210); 
+            buf_matA1=upd_w(buf_matA1,1,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB0=*matB;
+            matB +=L3_jumpB0/32;
+
+
+            //K iteration 3
+            acc0=mac8(acc0,buf_matA1,0,0x0000,8,0x3120,buf_matB0,0,0x8800,2,0x3210); 
+            buf_matA0=upd_w(buf_matA0,0,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB1=*matB;
+            matB +=L3_jumpB0/32;
+
+            acc1=mac8(acc1,buf_matA1,0,0x0000,8,0x3120,buf_matB1,0,0x8800,2,0x3210);
+            buf_matA0=upd_w(buf_matA0,1,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB0=*matB;
+            matB +=L3_jumpB0/32;
+            //K iteration 4
+            acc0=mac8(acc0,buf_matA0,0,0x0000,8,0x3120,buf_matB0,0,0x8800,2,0x3210); 
+            buf_matA1=upd_w(buf_matA1,0,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB1=*matB;
+            matB +=L3_jumpB0/32;
+
+            acc1=mac8(acc1,buf_matA0,0,0x0000,8,0x3120,buf_matB1,0,0x8800,2,0x3210); 
+            buf_matA1=upd_w(buf_matA1,1,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB0=*matB;
+            matB +=L3_jumpB0/32;
+
+
+            //K iteration 5
+            acc0=mac8(acc0,buf_matA1,0,0x0000,8,0x3120,buf_matB0,0,0x8800,2,0x3210); 
+            buf_matA0=upd_w(buf_matA0,0,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB1=*matB;
+            matB +=L3_jumpB0/32;
+
+            acc1=mac8(acc1,buf_matA1,0,0x0000,8,0x3120,buf_matB1,0,0x8800,2,0x3210);
+            buf_matA0=upd_w(buf_matA0,1,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB0=*matB;
+            matB +=L3_jumpB0/32;
+            
+            //K iteration 6
+            acc0=mac8(acc0,buf_matA0,0,0x0000,8,0x3120,buf_matB0,0,0x8800,2,0x3210);
+            buf_matA1=upd_w(buf_matA1,0,window_read_v32(matA));
+	        window_incr(matA,L3_jumpA0);
+	        buf_matB1=*matB;
+            matB +=L3_jumpB0/32;
+
+            acc1=mac8(acc1,buf_matA0,0,0x0000,8,0x3120,buf_matB1,0,0x8800,2,0x3210);
+            buf_matA1=upd_w(buf_matA1,1,window_read_v32(matA));
+	        window_decr(matA,L3_jumpA2);
+	        buf_matB0=*matB;
+            matB +=L3_jumpB0/32;
+
+
+            //K iteration 7
+            acc0=mac8(acc0,buf_matA1,0,0x0000,8,0x3120,buf_matB0,0,0x8800,2,0x3210);
+	        writeincr_v8(matC,acc0);
+            buf_matB1=*matB;
+            matB +=L3_jumpB0/32;
+
+            acc1=mac8(acc1,buf_matA1,0,0x0000,8,0x3120,buf_matB1,0,0x8800,2,0x3210);
+            writeincr_v8(matC,acc1);
+        }
+        window_incr(matA,L3_jumpA1);
+        matB -=L3_jumpB3/32;
+    }
+}","Injected bug type: stream_deadlock_unbalanced_tokens.
+The buggy version intentionally introduces a failure mode common in AIE integration and kernel debugging.
+
+Expected symptom: Known failure mode: stream_deadlock_unbalanced_tokens. Debug focus: verify token balance on every stream edge because missing reads or writes can deadlock the graph. Debug focus: verify window extents, iterator stride, and loop trip counts so the kernel does not read past tile-local memory or mis-size buffers. Debug focus: inspect vector width assumptions, accumulator precision, and whether the kernelâ€™s data movement matches the graph wiring.
+
+Why the fixed version is correct: Summary: This AIE kernel uses Window, Stream interfaces and v32int8, v64int8, v8acc48 to implement AIE dataflow computation over vectorized kernels and graph connections.
+
+Artifact classification: AIE kernel. Kernel ports: input_window_int8* __restrict matA; output_stream_acc48* __restrict matC.
+
+Interfaces: Window, Stream.
+Vector types: v32int8, v64int8, v8acc48.
+Intrinsics and AIE APIs: writeincr_v8.
+
+Buffer requirements: No explicit window dimensions appear in the kernel; correct execution depends on balanced stream token rates across producer and consumer kernels.
+
+Mathematical or architectural role: AIE dataflow computation over vectorized kernels and graph connections.
+
+AIE-specific constraints: CHESS pipelining pragmas indicate the compiler is expected to software-pipeline the loop for the target tile. Stream interfaces require exact producer-consumer balance; missing reads or writes can deadlock the graph. Window and buffer iterators must remain aligned with the intended vector width and tile-local memory limits."
+"bug_fix_pair","validation","https://github.com/Xilinx/Vitis_Libraries/blob/main/dsp/L1/src/aie/merge_sort.cpp","Explain what is wrong in the buggy version, what symptom it causes, and why the correct version fixes it.","Buggy version:
+#ifndef _DSPLIB_MERGE_SORT_CPP_
+#define _DSPLIB_MERGE_SORT_CPP_
+
+#include <adf.h>
+
+// if we use 1kb registers -> aie api uses 2x512b registers for 1024b so we need this for QoR
+#ifndef __AIE_API_USE_NATIVE_1024B_VECTOR__
+#define __AIE_API_USE_NATIVE_1024B_VECTOR__
+#endif
+#include ""aie_api/aie_adf.hpp""
+#include ""aie_api/utils.hpp""
+#include ""kernel_api_utils.hpp""
+#include ""merge_sort_traits.hpp""
+#include ""merge_sort.hpp""
+
+#ifdef __X86SIM__
+// #define _DSPLIB_MERGE_SORT_HPP_DEBUG_
+#endif
+
+namespace xf {
+namespace dsp {
+namespace aie {
+namespace bitonic_sort {
+
+namespace aie = ::aie;
+
+//----------------------------------------------------------------------------------------------------------------------
+template <typename TT_DATA,
+          unsigned int TP_IN_API,
+          unsigned int TP_OUT_API,
+          unsigned int TP_DIM,
+          unsigned int TP_ASCENDING>
+INLINE_DECL void kernelClass<TT_DATA, TP_IN_API, TP_OUT_API, TP_DIM, TP_ASCENDING>::mergeSortKernel(
+    T_inputIF<TT_DATA> inInterface, T_outputIF<TT_DATA> outInterface) {
+    // select architecture and run FIR iteration
+    mergeSortSelectArch(inInterface, outInterface);
+};
+
+//----------------------------------------------------------------------------------------------------------------------
+// Select arch - matVecMulBasic (iobuffer B) or matVecMultStream (stream B)
+template <typename TT_DATA,
+          unsigned int TP_IN_API,
+          unsigned int TP_OUT_API,
+          unsigned int TP_DIM,
+          unsigned int TP_ASCENDING>
+INLINE_DECL void kernelClass<TT_DATA, TP_IN_API, TP_OUT_API, TP_DIM, TP_ASCENDING>::mergeSortSelectArch(
+    T_inputIF<TT_DATA> inInterface, T_outputIF<TT_DATA> outInterface) {
+    if
+        constexpr(TP_IN_API == kWindowAPI) { mergeSortBufferIn(inInterface, outInterface); }
+    else {
+        mergeSortStreamIn(inInterface, outInterface);
+    }
+}
+//----------------------------------------------------------------------------------------------------------------------
+template <typename TT_DATA,
+          unsigned int TP_IN_API,
+          unsigned int TP_OUT_API,
+          unsigned int TP_DIM,
+          unsigned int TP_ASCENDING>
+INLINE_DECL void kernelClass<TT_DATA, TP_IN_API, TP_OUT_API, TP_DIM, TP_ASCENDING>::mergeSortStreamIn(
+    T_inputIF<TT_DATA> inInterface, T_outputIF<TT_DATA> outInterface) {
+    using dataVectStream_t = aie::vector<TT_DATA, kSamplesInVec>;
+    TT_DATA aVal, bVal, d_Out;
+
+    dataVectStream_t v_A, v_B, v_Out;
+    v_A = readincr_v<kSamplesInVec>(inInterface.inStream0);
+    if
+        constexpr(TP_IN_API == kStreamCascAPI) { v_B = readincr_v<kSamplesInVec>(inInterface.inCascade); }
+    else {
+        v_B = readincr_v<kSamplesInVec>(inInterface.inStream1);
+    }
+    unsigned int aIdx = 0;
+    unsigned int bIdx = 0;
+    unsigned int aLoadCount = 1;
+    unsigned int bLoadCount = 1;
+    for (int i = 0; i < (kVecInFrame); i++) {
+#pragma unroll(kSamplesInVec)
+        for (int j = 0; j < kSamplesInVec; j++) {
+            if ((v_A[aIdx] <= v_B[bIdx]) == TP_ASCENDING) {
+                v_Out[j] = v_A[aIdx++];
+                // load new A when ready
+                if (aIdx == kSamplesInVec) {
+                    aIdx = 0;
+                    if (aLoadCount < (kVecInFrame / 2)) {
+                        aLoadCount++;
+                        v_A = readincr_v<kSamplesInVec>(inInterface.inStream0);
+                    } else {
+                        v_A = ::aie::broadcast<TT_DATA, kSamplesInVec>(sortLimit);
+                    }
+                }
+            } else {
+                v_Out[j] = v_B[bIdx++];
+                // load new B when ready
+                if (bIdx == kSamplesInVec) {
+                    bIdx = 0;
+                    if (bLoadCount < (kVecInFrame / 2)) {
+                        bLoadCount++;
+                        if
+                            constexpr(TP_IN_API == kStreamCascAPI) {
+                                v_B = readincr_v<kSamplesInVec>(inInterface.inCascade);
+                            }
+                        else {
+                            v_B = readincr_v<kSamplesInVec>(inInterface.inStream1);
+                        }
+                    } else {
+                        v_B = ::aie::broadcast<TT_DATA, kSamplesInVec>(sortLimit);
+                    }
+                }
+            }
+        }
+        if
+            constexpr(TP_OUT_API == kCascAPI) { writeincr(outInterface.outCascade, v_Out); }
+        else {
+// BUG_INJECTED: Removed output token write to create producer/consumer imbalance and potential stream deadlock.
+// ORIGINAL: writeincr(outInterface.outStream, v_Out);
+
+        }
+    }
+};
+template <typename TT_DATA,
+          unsigned int TP_IN_API,
+          unsigned int TP_OUT_API,
+          unsigned int TP_DIM,
+          unsigned int TP_ASCENDING>
+INLINE_DECL void kernelClass<TT_DATA, TP_IN_API, TP_OUT_API, TP_DIM, TP_ASCENDING>::mergeSortBufferIn(
+    T_inputIF<TT_DATA> inInterface, T_outputIF<TT_DATA> outInterface) {
+    using dataVectStream_t = aie::vector<TT_DATA, kSamplesInVec>;
+    using dataVectWindow_t = aie::vector<TT_DATA, kSamplesInWindowVec>;
+    TT_DATA aVal, bVal, d_Out;
+
+    dataVectStream_t v_Out;
+
+    dataVectWindow_t v_A, v_B;
+    dataVectWindow_t* inPtrA = (dataVectWindow_t*)inInterface.inWindow0;
+    dataVectWindow_t* inPtrB = (dataVectWindow_t*)inInterface.inWindow1;
+    v_A = *inPtrA++;
+    v_B = *inPtrB++;
+
+    unsigned int aIdx = 0;
+    unsigned int bIdx = 0;
+    unsigned int aLoadCount = 1;
+    unsigned int bLoadCount = 1;
+    for (int i = 0; i < (kVecInFrame); i++) chess_prepare_for_pipelining chess_loop_count(kVecInFrame) {
+#pragma unroll(kSamplesInVec)
+            for (int j = 0; j < kSamplesInVec; j++) {
+                if ((v_A[aIdx] <= v_B[bIdx]) == TP_ASCENDING) {
+                    v_Out[j] = v_A[aIdx++];
+                    // load new A when ready
+                    if (aIdx == kSamplesInWindowVec) {
+                        aIdx = 0;
+                        if (aLoadCount < kVecInWindow) {
+                            aLoadCount++;
+                            v_A = *inPtrA++;
+                        } else {
+                            v_A = ::aie::broadcast<TT_DATA, kSamplesInWindowVec>(sortLimit);
+                        }
+                    }
+                } else {
+                    v_Out[j] = v_B[bIdx++];
+                    // load new B when ready
+                    if (bIdx == kSamplesInWindowVec) {
+                        bIdx = 0;
+                        if (bLoadCount < kVecInWindow) {
+                            bLoadCount++;
+                            v_B = *inPtrB++;
+                        } else {
+                            v_B = ::aie::broadcast<TT_DATA, kSamplesInWindowVec>(sortLimit);
+                        }
+                    }
+                }
+            }
+            if
+                constexpr(TP_OUT_API == kCascAPI) { writeincr(outInterface.outCascade, v_Out); }
+            else {
+                writeincr(outInterface.outStream, v_Out);
+            }
+        }
+};
+//////////////////////////////////////////////////// dual stream in, stream out ////////////////////////////////////////
+template <typename TT_DATA,
+          unsigned int TP_IN_API,
+          unsigned int TP_OUT_API,
+          unsigned int TP_DIM,
+          unsigned int TP_ASCENDING>
+NOINLINE_DECL void merge_sort<TT_DATA, TP_IN_API, TP_OUT_API, TP_DIM, TP_ASCENDING>::bitonic_merge_main(
+    input_stream<TT_DATA>* __restrict inStream0,
+    input_stream<TT_DATA>* __restrict inStream1,
+    output_stream<TT_DATA>* __restrict outStream) {
+    T_inputIF<TT_DATA> inInterface;
+    T_outputIF<TT_DATA> outInterface;
+
+    inInterface.inStream0 = inStream0;
+    inInterface.inStream1 = inStream1;
+    outInterface.outStream = outStream;
+
+    this->mergeSortKernel(inInterface, outInterface);
+};
+template <typename TT_DATA,
+          //   unsigned int TP_IN_API,
+          //   unsigned int TP_OUT_API,
+          unsigned int TP_DIM,
+          unsigned int TP_ASCENDING>
+NOINLINE_DECL void merge_sort<TT_DATA, kStreamCascAPI, kStreamAPI, TP_DIM, TP_ASCENDING>::bitonic_merge_main(
+    input_stream<TT_DATA>* __restrict inStream0,
+    input_cascade<TT_DATA>* __restrict inCascade,
+    output_stream<TT_DATA>* __restrict outStream) {
+    T_inputIF<TT_DATA> inInterface;
+    T_outputIF<TT_DATA> outInterface;
+
+    inInterface.inStream0 = inStream0;
+    inInterface.inCascade = inCascade;
+    outInterface.outStream = outStream;
+    this->mergeSortKernel(inInterface, outInterface);
+};
+template <typename TT_DATA,
+          //   unsigned int TP_IN_API,
+          //   unsigned int TP_OUT_API,
+          unsigned int TP_DIM,
+          unsigned int TP_ASCENDING>
+NOINLINE_DECL void merge_sort<TT_DATA, kStreamCascAPI, kCascAPI, TP_DIM, TP_ASCENDING>::bitonic_merge_main(
+    input_stream<TT_DATA>* __restrict inStream0,
+    input_cascade<TT_DATA>* __restrict inCascade,
+    output_cascade<TT_DATA>* __restrict outCascade) {
+    T_inputIF<TT_DATA> inInterface;
+    T_outputIF<TT_DATA> outInterface;
+
+    inInterface.inStream0 = inStream0;
+    inInterface.inCascade = inCascade;
+    outInterface.outCascade = outCascade;
+    this->mergeSortKernel(inInterface, outInterface);
+};
+/////////////////////////////////////////////////////// iobuffer in ////////////////////////////////////////////////////
+template <typename TT_DATA,
+          //   unsigned int TP_IN_API,
+          //   unsigned int TP_OUT_API,
+          unsigned int TP_DIM,
+          unsigned int TP_ASCENDING>
+NOINLINE_DECL void merge_sort<TT_DATA, kWindowAPI, kStreamAPI, TP_DIM, TP_ASCENDING>::bitonic_merge_main(
+    input_buffer<TT_DATA>& __restrict inWindow0,
+    input_buffer<TT_DATA>& __restrict inWindow1,
+    output_stream<TT_DATA>* __restrict outStream) {
+    T_inputIF<TT_DATA> inInterface;
+    T_outputIF<TT_DATA> outInterface;
+
+    inInterface.inWindow0 = inWindow0.data();
+    inInterface.inWindow1 = inWindow1.data();
+    outInterface.outStream = outStream;
+
+    this->mergeSortKernel(inInterface, outInterface);
+};
+template <typename TT_DATA,
+          //   unsigned int TP_IN_API,
+          //   unsigned int TP_OUT_API,
+          unsigned int TP_DIM,
+          unsigned int TP_ASCENDING>
+NOINLINE_DECL void merge_sort<TT_DATA, kWindowAPI, kCascAPI, TP_DIM, TP_ASCENDING>::bitonic_merge_main(
+    input_buffer<TT_DATA>& __restrict inWindow0,
+    input_buffer<TT_DATA>& __restrict inWindow1,
+    output_cascade<TT_DATA>* __restrict outCascade) {
+    T_inputIF<TT_DATA> inInterface;
+    T_outputIF<TT_DATA> outInterface;
+
+    inInterface.inWindow0 = inWindow0.data();
+    inInterface.inWindow1 = inWindow1.data();
+    outInterface.outCascade = outCascade;
+    this->mergeSortKernel(inInterface, outInterface);
+};
+}
+}
+}
+}
+
+#endif
+
+Correct version:
+#ifndef _DSPLIB_MERGE_SORT_CPP_
+#define _DSPLIB_MERGE_SORT_CPP_
+
+#include <adf.h>
+
+// if we use 1kb registers -> aie api uses 2x512b registers for 1024b so we need this for QoR
+#ifndef __AIE_API_USE_NATIVE_1024B_VECTOR__
+#define __AIE_API_USE_NATIVE_1024B_VECTOR__
+#endif
+#include ""aie_api/aie_adf.hpp""
+#include ""aie_api/utils.hpp""
+#include ""kernel_api_utils.hpp""
+#include ""merge_sort_traits.hpp""
+#include ""merge_sort.hpp""
+
+#ifdef __X86SIM__
+// #define _DSPLIB_MERGE_SORT_HPP_DEBUG_
+#endif
+
+namespace xf {
+namespace dsp {
+namespace aie {
+namespace bitonic_sort {
+
+namespace aie = ::aie;
+
+//----------------------------------------------------------------------------------------------------------------------
+template <typename TT_DATA,
+          unsigned int TP_IN_API,
+          unsigned int TP_OUT_API,
+          unsigned int TP_DIM,
+          unsigned int TP_ASCENDING>
+INLINE_DECL void kernelClass<TT_DATA, TP_IN_API, TP_OUT_API, TP_DIM, TP_ASCENDING>::mergeSortKernel(
+    T_inputIF<TT_DATA> inInterface, T_outputIF<TT_DATA> outInterface) {
+    // select architecture and run FIR iteration
+    mergeSortSelectArch(inInterface, outInterface);
+};
+
+//----------------------------------------------------------------------------------------------------------------------
+// Select arch - matVecMulBasic (iobuffer B) or matVecMultStream (stream B)
+template <typename TT_DATA,
+          unsigned int TP_IN_API,
+          unsigned int TP_OUT_API,
+          unsigned int TP_DIM,
+          unsigned int TP_ASCENDING>
+INLINE_DECL void kernelClass<TT_DATA, TP_IN_API, TP_OUT_API, TP_DIM, TP_ASCENDING>::mergeSortSelectArch(
+    T_inputIF<TT_DATA> inInterface, T_outputIF<TT_DATA> outInterface) {
+    if
+        constexpr(TP_IN_API == kWindowAPI) { mergeSortBufferIn(inInterface, outInterface); }
+    else {
+        mergeSortStreamIn(inInterface, outInterface);
+    }
+}
+//----------------------------------------------------------------------------------------------------------------------
+template <typename TT_DATA,
+          unsigned int TP_IN_API,
+          unsigned int TP_OUT_API,
+          unsigned int TP_DIM,
+          unsigned int TP_ASCENDING>
+INLINE_DECL void kernelClass<TT_DATA, TP_IN_API, TP_OUT_API, TP_DIM, TP_ASCENDING>::mergeSortStreamIn(
+    T_inputIF<TT_DATA> inInterface, T_outputIF<TT_DATA> outInterface) {
+    using dataVectStream_t = aie::vector<TT_DATA, kSamplesInVec>;
+    TT_DATA aVal, bVal, d_Out;
+
+    dataVectStream_t v_A, v_B, v_Out;
+    v_A = readincr_v<kSamplesInVec>(inInterface.inStream0);
+    if
+        constexpr(TP_IN_API == kStreamCascAPI) { v_B = readincr_v<kSamplesInVec>(inInterface.inCascade); }
+    else {
+        v_B = readincr_v<kSamplesInVec>(inInterface.inStream1);
+    }
+    unsigned int aIdx = 0;
+    unsigned int bIdx = 0;
+    unsigned int aLoadCount = 1;
+    unsigned int bLoadCount = 1;
+    for (int i = 0; i < (kVecInFrame); i++) {
+#pragma unroll(kSamplesInVec)
+        for (int j = 0; j < kSamplesInVec; j++) {
+            if ((v_A[aIdx] <= v_B[bIdx]) == TP_ASCENDING) {
+                v_Out[j] = v_A[aIdx++];
+                // load new A when ready
+                if (aIdx == kSamplesInVec) {
+                    aIdx = 0;
+                    if (aLoadCount < (kVecInFrame / 2)) {
+                        aLoadCount++;
+                        v_A = readincr_v<kSamplesInVec>(inInterface.inStream0);
+                    } else {
+                        v_A = ::aie::broadcast<TT_DATA, kSamplesInVec>(sortLimit);
+                    }
+                }
+            } else {
+                v_Out[j] = v_B[bIdx++];
+                // load new B when ready
+                if (bIdx == kSamplesInVec) {
+                    bIdx = 0;
+                    if (bLoadCount < (kVecInFrame / 2)) {
+                        bLoadCount++;
+                        if
+                            constexpr(TP_IN_API == kStreamCascAPI) {
+                                v_B = readincr_v<kSamplesInVec>(inInterface.inCascade);
+                            }
+                        else {
+                            v_B = readincr_v<kSamplesInVec>(inInterface.inStream1);
+                        }
+                    } else {
+                        v_B = ::aie::broadcast<TT_DATA, kSamplesInVec>(sortLimit);
+                    }
+                }
+            }
+        }
+        if
+            constexpr(TP_OUT_API == kCascAPI) { writeincr(outInterface.outCascade, v_Out); }
+        else {
+            writeincr(outInterface.outStream, v_Out);
+        }
+    }
+};
+template <typename TT_DATA,
+          unsigned int TP_IN_API,
+          unsigned int TP_OUT_API,
+          unsigned int TP_DIM,
+          unsigned int TP_ASCENDING>
+INLINE_DECL void kernelClass<TT_DATA, TP_IN_API, TP_OUT_API, TP_DIM, TP_ASCENDING>::mergeSortBufferIn(
+    T_inputIF<TT_DATA> inInterface, T_outputIF<TT_DATA> outInterface) {
+    using dataVectStream_t = aie::vector<TT_DATA, kSamplesInVec>;
+    using dataVectWindow_t = aie::vector<TT_DATA, kSamplesInWindowVec>;
+    TT_DATA aVal, bVal, d_Out;
+
+    dataVectStream_t v_Out;
+
+    dataVectWindow_t v_A, v_B;
+    dataVectWindow_t* inPtrA = (dataVectWindow_t*)inInterface.inWindow0;
+    dataVectWindow_t* inPtrB = (dataVectWindow_t*)inInterface.inWindow1;
+    v_A = *inPtrA++;
+    v_B = *inPtrB++;
+
+    unsigned int aIdx = 0;
+    unsigned int bIdx = 0;
+    unsigned int aLoadCount = 1;
+    unsigned int bLoadCount = 1;
+    for (int i = 0; i < (kVecInFrame); i++) chess_prepare_for_pipelining chess_loop_count(kVecInFrame) {
+#pragma unroll(kSamplesInVec)
+            for (int j = 0; j < kSamplesInVec; j++) {
+                if ((v_A[aIdx] <= v_B[bIdx]) == TP_ASCENDING) {
+                    v_Out[j] = v_A[aIdx++];
+                    // load new A when ready
+                    if (aIdx == kSamplesInWindowVec) {
+                        aIdx = 0;
+                        if (aLoadCount < kVecInWindow) {
+                            aLoadCount++;
+                            v_A = *inPtrA++;
+                        } else {
+                            v_A = ::aie::broadcast<TT_DATA, kSamplesInWindowVec>(sortLimit);
+                        }
+                    }
+                } else {
+                    v_Out[j] = v_B[bIdx++];
+                    // load new B when ready
+                    if (bIdx == kSamplesInWindowVec) {
+                        bIdx = 0;
+                        if (bLoadCount < kVecInWindow) {
+                            bLoadCount++;
+                            v_B = *inPtrB++;
+                        } else {
+                            v_B = ::aie::broadcast<TT_DATA, kSamplesInWindowVec>(sortLimit);
+                        }
+                    }
+                }
+            }
+            if
+                constexpr(TP_OUT_API == kCascAPI) { writeincr(outInterface.outCascade, v_Out); }
+            else {
+                writeincr(outInterface.outStream, v_Out);
+            }
+        }
+};
+//////////////////////////////////////////////////// dual stream in, stream out ////////////////////////////////////////
+template <typename TT_DATA,
+          unsigned int TP_IN_API,
+          unsigned int TP_OUT_API,
+          unsigned int TP_DIM,
+          unsigned int TP_ASCENDING>
+NOINLINE_DECL void merge_sort<TT_DATA, TP_IN_API, TP_OUT_API, TP_DIM, TP_ASCENDING>::bitonic_merge_main(
+    input_stream<TT_DATA>* __restrict inStream0,
+    input_stream<TT_DATA>* __restrict inStream1,
+    output_stream<TT_DATA>* __restrict outStream) {
+    T_inputIF<TT_DATA> inInterface;
+    T_outputIF<TT_DATA> outInterface;
+
+    inInterface.inStream0 = inStream0;
+    inInterface.inStream1 = inStream1;
+    outInterface.outStream = outStream;
+
+    this->mergeSortKernel(inInterface, outInterface);
+};
+template <typename TT_DATA,
+          //   unsigned int TP_IN_API,
+          //   unsigned int TP_OUT_API,
+          unsigned int TP_DIM,
+          unsigned int TP_ASCENDING>
+NOINLINE_DECL void merge_sort<TT_DATA, kStreamCascAPI, kStreamAPI, TP_DIM, TP_ASCENDING>::bitonic_merge_main(
+    input_stream<TT_DATA>* __restrict inStream0,
+    input_cascade<TT_DATA>* __restrict inCascade,
+    output_stream<TT_DATA>* __restrict outStream) {
+    T_inputIF<TT_DATA> inInterface;
+    T_outputIF<TT_DATA> outInterface;
+
+    inInterface.inStream0 = inStream0;
+    inInterface.inCascade = inCascade;
+    outInterface.outStream = outStream;
+    this->mergeSortKernel(inInterface, outInterface);
+};
+template <typename TT_DATA,
+          //   unsigned int TP_IN_API,
+          //   unsigned int TP_OUT_API,
+          unsigned int TP_DIM,
+          unsigned int TP_ASCENDING>
+NOINLINE_DECL void merge_sort<TT_DATA, kStreamCascAPI, kCascAPI, TP_DIM, TP_ASCENDING>::bitonic_merge_main(
+    input_stream<TT_DATA>* __restrict inStream0,
+    input_cascade<TT_DATA>* __restrict inCascade,
+    output_cascade<TT_DATA>* __restrict outCascade) {
+    T_inputIF<TT_DATA> inInterface;
+    T_outputIF<TT_DATA> outInterface;
+
+    inInterface.inStream0 = inStream0;
+    inInterface.inCascade = inCascade;
+    outInterface.outCascade = outCascade;
+    this->mergeSortKernel(inInterface, outInterface);
+};
+/////////////////////////////////////////////////////// iobuffer in ////////////////////////////////////////////////////
+template <typename TT_DATA,
+          //   unsigned int TP_IN_API,
+          //   unsigned int TP_OUT_API,
+          unsigned int TP_DIM,
+          unsigned int TP_ASCENDING>
+NOINLINE_DECL void merge_sort<TT_DATA, kWindowAPI, kStreamAPI, TP_DIM, TP_ASCENDING>::bitonic_merge_main(
+    input_buffer<TT_DATA>& __restrict inWindow0,
+    input_buffer<TT_DATA>& __restrict inWindow1,
+    output_stream<TT_DATA>* __restrict outStream) {
+    T_inputIF<TT_DATA> inInterface;
+    T_outputIF<TT_DATA> outInterface;
+
+    inInterface.inWindow0 = inWindow0.data();
+    inInterface.inWindow1 = inWindow1.data();
+    outInterface.outStream = outStream;
+
+    this->mergeSortKernel(inInterface, outInterface);
+};
+template <typename TT_DATA,
+          //   unsigned int TP_IN_API,
+          //   unsigned int TP_OUT_API,
+          unsigned int TP_DIM,
+          unsigned int TP_ASCENDING>
+NOINLINE_DECL void merge_sort<TT_DATA, kWindowAPI, kCascAPI, TP_DIM, TP_ASCENDING>::bitonic_merge_main(
+    input_buffer<TT_DATA>& __restrict inWindow0,
+    input_buffer<TT_DATA>& __restrict inWindow1,
+    output_cascade<TT_DATA>* __restrict outCascade) {
+    T_inputIF<TT_DATA> inInterface;
+    T_outputIF<TT_DATA> outInterface;
+
+    inInterface.inWindow0 = inWindow0.data();
+    inInterface.inWindow1 = inWindow1.data();
+    outInterface.outCascade = outCascade;
+    this->mergeSortKernel(inInterface, outInterface);
+};
+}
+}
+}
+}
+
+#endif
+","Injected bug type: stream_deadlock_unbalanced_tokens.
+The buggy version intentionally introduces a failure mode common in AIE integration and kernel debugging.
+
+Expected symptom: Known failure mode: stream_deadlock_unbalanced_tokens. Debug focus: verify token balance on every stream edge because missing reads or writes can deadlock the graph. Debug focus: verify window extents, iterator stride, and loop trip counts so the kernel does not read past tile-local memory or mis-size buffers. Debug focus: inspect vector width assumptions, accumulator precision, and whether the kernelâ€™s data movement matches the graph wiring.
+
+Why the fixed version is correct: Summary: This AIE kernel uses Window, Stream, Cascade interfaces and aie::vector<TT_DATA,kSamplesInVec>, aie::vector<TT_DATA,kSamplesInWindowVec> to implement Finite impulse response filtering using complex multiply-accumulate across streamed samples and tap coefficients.
+
+Artifact classification: AIE kernel. Kernel ports: T_inputIF<TT_DATA> inInterface; T_outputIF<TT_DATA> outInterface.
+
+Interfaces: Window, Stream, Cascade.
+Vector types: aie::vector<TT_DATA,kSamplesInVec>, aie::vector<TT_DATA,kSamplesInWindowVec>.
+Intrinsics and AIE APIs: aie::vector, aie::broadcast, writeincr.
+
+Buffer requirements: No explicit window dimensions appear in the kernel; correct execution depends on balanced stream token rates across producer and consumer kernels.
+
+Mathematical or architectural role: Finite impulse response filtering using complex multiply-accumulate across streamed samples and tap coefficients.
+
+AIE-specific constraints: CHESS pipelining pragmas indicate the compiler is expected to software-pipeline the loop for the target tile. Stream interfaces require exact producer-consumer balance; missing reads or writes can deadlock the graph. Window and buffer iterators must remain aligned with the intended vector width and tile-local memory limits."
+"dataflow_explanation","validation","https://github.com/Xilinx/Vitis-Tutorials/blob/2024.2/AI_Engine_Development/AIE/Design_Tutorials/02-super_sampling_rate_fir/SingleKernel/aie/aie_kernels/FirSingleStream.cpp","Describe how data enters, transforms, and exits this AI Engine kernel.","#include <adf.h>
+#include ""FirSingleStream.h""
+
+#define MULMAC(N) \
+		taps =  *coeff++; \
+		acc = mul4(data,N,0x3210,1,taps,0,0x0000,1); \
+		acc = mac4(acc,data,N+2,0x3210,1,taps,2,0x0000,1);\
+		acc = mac4(acc,data,N+4,0x3210,1,taps,4,0x0000,1);\
+		acc = mac4(acc,data,N+6,0x3210,1,taps,6,0x0000,1)
+
+#define MACMAC(N) \
+		taps =  *coeff++; \
+		acc = mac4(acc,data,N,0x3210,1,taps,0,0x0000,1); \
+		acc = mac4(acc,data,N+2,0x3210,1,taps,2,0x0000,1);\
+		acc = mac4(acc,data,N+4,0x3210,1,taps,4,0x0000,1);\
+		acc = mac4(acc,data,N+6,0x3210,1,taps,6,0x0000,1)
+
+
+template <int NSamples,int ShiftAcc>
+void SingleStream::FIR_SingleStream<NSamples,ShiftAcc>::filter(input_stream_cint16* sin, output_stream_cint16* sout)
+{
+	v8cint16 *coeff =  (v8cint16*) weights;
+	v8cint16 taps = undef_v8cint16();
+	v32cint16 *ptr_delay_line = (v32cint16 *)delay_line;
+	v32cint16 data = *ptr_delay_line;
+
+	v4cacc48 acc = undef_v4cacc48();
+
+// Computes 32 samples per iteration
+	for(int i=0;i<NSamples/32;i++)
+		chess_prepare_for_pipelining
+		chess_loop_range(NSamples/32,NSamples/32)
+		chess_pipeline_adjust_preamble(10)
+	{
+		MULMAC(1);
+		MACMAC(9);
+		MACMAC(17);
+		data = upd_v(data,0,readincr_v4(sin));
+		MACMAC(25);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(5);
+		MACMAC(13);
+		MACMAC(21);
+		data = upd_v(data,1,readincr_v4(sin));
+		MACMAC(29);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(9);
+		MACMAC(17);
+		MACMAC(25);
+		data = upd_v(data,2,readincr_v4(sin));
+		MACMAC(1);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(13);
+		MACMAC(21);
+		MACMAC(29);
+		data = upd_v(data,3,readincr_v4(sin));
+		MACMAC(5);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(17);
+		MACMAC(25);
+		MACMAC(1);
+		data = upd_v(data,4,readincr_v4(sin));
+		MACMAC(9);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(21);
+		MACMAC(29);
+		MACMAC(5);
+		data = upd_v(data,5,readincr_v4(sin));
+		MACMAC(13);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(25);
+		MACMAC(1);
+		MACMAC(9);
+		data = upd_v(data,6,readincr_v4(sin));
+		MACMAC(17);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(29);
+		MACMAC(5);
+		MACMAC(13);
+		data = upd_v(data,7,readincr_v4(sin));
+		MACMAC(21);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+	}
+
+	*ptr_delay_line = data;
+}
+","Dataflow role: Finite impulse response filtering using complex multiply-accumulate across streamed samples and tap coefficients.
+
+I/O structure: Kernel ports: input_stream_cint16* sin; output_stream_cint16* sout.
+
+Buffering and transfer requirements: No explicit window dimensions appear in the kernel; correct execution depends on balanced stream token rates across producer and consumer kernels.
+
+Deployment constraints: The kernel is written for SIMD and VLIW issue slots, so vector-friendly instruction ordering matters for throughput. CHESS pipelining pragmas indicate the compiler is expected to software-pipeline the loop for the target tile. Stream interfaces require exact producer-consumer balance; missing reads or writes can deadlock the graph."
+"dataflow_explanation","validation","aie_dataset/dsp_fir/softdemod_kernel.cpp","Explain the computation pipeline in this AIE kernel, including how data is buffered and transformed.","#include ""softdemod_kernel.h""
+#include <adf.h>
+#include <aie_api/aie.hpp>
+#include <aie_api/aie_adf.hpp>
+
+using namespace adf;
+
+void softdemod_kernel::softdemod(adf::input_buffer<cfloat, extents<BUFSZ>>& __restrict in,
+#ifndef _DUMPLOOP_
+                                 adf::output_buffer<float, extents<4*BUFSZ>>& __restrict out)
+#else
+                                 adf::output_buffer<float, extents<4*BUFSZ>>& __restrict out,
+                                 adf::output_buffer<cfloat, extents<16*BUFSZ>>& __restrict loopout)
+#endif
+{
+    aie::vector<cfloat,16> ref_const = aie::load_v<16>(constel);
+    auto pIn = aie::begin(in);
+    auto pwbufA16 = aie::begin_restrict_vector<16>(wbufA);
+
+    // Pass 1: subtract each input symbol from all 16 constellation points
+    for (unsigned i = 0; i < BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(BUFSZ)
+    {
+        *pwbufA16++ = aie::sub(ref_const, *pIn++);
+    }
+
+    auto pwbufA8 = aie::begin_restrict_vector<8>(wbufA);
+    auto pwbufB8 = aie::begin_restrict_vector<8>(wbufB);
+
+    // Pass 2: compute squared magnitudes |d|^2
+    for (unsigned i = 0; i < 2*BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(2*BUFSZ)
+	  {
+        *pwbufB8++ = aie::abs_square(*pwbufA8++);
+    }
+
+    pwbufB8 -= 2*BUFSZ;
+
+    aie::accum<accfloat,8> acc_init;
+    acc_init.from_vector(aie::broadcast<float,8>(EADD),0);
+    auto pwbufC8 = aie::begin_restrict_vector<8>(wbufC);
+
+    // Pass 3: compute exp(-|d|^2 * EMULT + EADD) approximation
+    for (unsigned i = 0; i < 2*BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(2*BUFSZ)
+	  {
+        *pwbufC8++ = aie::mac(acc_init, *pwbufB8++, EMULT);
+    }
+
+    pwbufB8 -= 2*BUFSZ;
+    pwbufC8 -= 2*BUFSZ;
+
+    // Pass 4: convert float exponent to int for bit manipulation
+    for (unsigned i = 0; i < 2*BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(2*BUFSZ)
+	  {
+        aie::vector<int32,8> expint = aie::to_fixed(*pwbufC8++, 16);
+        *pwbufB8++ = expint.cast_to<float>();
+    }
+
+    pwbufB8 -= 2*BUFSZ;
+    pwbufC8 -= 2*BUFSZ;
+
+    // Pass 5: clamp negative values to 0
+    for (unsigned i = 0; i < 2*BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(2*BUFSZ)
+	  {
+        aie::mask<8> msk_neg = aie::lt(*pwbufB8, 0.0f);
+        *pwbufC8++ = aie::select(*pwbufB8++, 0.0f, msk_neg);
+    }
+
+    pwbufB8 -= 2*BUFSZ;
+    pwbufC8 -= 2*BUFSZ;
+
+    // Pass 6: tree-reduce exp sums using fpadd with shuffle masks
+    for (unsigned i = 0; i < BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(BUFSZ)
+	  {
+        aie::vector<float,8> expsum;
+        auto expvec1 = *pwbufC8++;
+        auto expvec2 = *pwbufC8++;
+        auto vsum_L1_1 = fpadd(expvec1,expvec1,0,0x67452301);
+        auto vsum_L1_2 = fpadd(expvec2,expvec2,0,0x67452301);
+        auto vsum_L1_3 = fpadd(expvec1,expvec2,0,0x76543210);
+        auto vsum_L2_1 = fpadd(vsum_L1_1,vsum_L1_1,0,0x54761032);
+        auto vsum_L2_2 = fpadd(vsum_L1_2,vsum_L1_2,0,0x54761032);
+        auto vsum_L2_3 = fpadd(vsum_L1_3,vsum_L1_3,0,0x67452301);
+        auto vsum_L2_4 = fpadd(vsum_L1_3,vsum_L1_3,0,0x54761032);
+        aie::vector<float,8> vsum_L3_1 = fpadd(vsum_L2_1,vsum_L2_1,0,0x32107654);
+        aie::vector<float,8> vsum_L3_2 = fpadd(vsum_L2_2,vsum_L2_2,0,0x32107654);
+        aie::vector<float,8> vsum_L3_3 = fpadd(vsum_L2_3,vsum_L2_3,0,0x54761032);
+        aie::vector<float,8> vsum_L3_4 = fpadd(vsum_L2_3,vsum_L2_3,0,0x32107654);
+        aie::vector<float,8> vsum_L3_5 = fpadd(vsum_L2_4,vsum_L2_4,0,0x32107654);
+        expsum[0] = vsum_L3_1[0];
+        expsum[4] = vsum_L3_2[0];
+        expsum[1] = vsum_L3_3[0];
+        expsum[5] = vsum_L3_3[4];
+        expsum[2] = vsum_L3_4[0];
+        expsum[6] = vsum_L3_4[2];
+        expsum[3] = vsum_L3_5[0];
+        expsum[7] = vsum_L3_5[1];
+        *pwbufB8++ = expsum;
+    }
+
+    pwbufB8 -= BUFSZ;
+
+    auto pwbufC4 = aie::begin_restrict_vector<4>(wbufC);
+
+    // Pass 7: compute LLRs = numerator / denominator via inv()
+    for (unsigned i = 0; i < BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(BUFSZ)
+	  {
+        aie::vector<float,8> expsum = *pwbufB8++;
+        *pwbufC4++ = aie::mul(expsum.extract<4>(0),inv(expsum.extract<4>(1)));
+    }
+
+    pwbufC4 -= BUFSZ;
+
+    auto pOut = aie::begin_vector<4>(out);
+
+    // Pass 8: write output
+    for (unsigned i = 0; i < BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(BUFSZ)
+	  {
+		*pOut++ = *pwbufC4++;
+	  }
+}
+","Dataflow role: AIE dataflow computation over vectorized kernels and graph connections.
+
+I/O structure: I/O ports are not trivially recoverable from the source signature.
+
+Buffering and transfer requirements: Kernel vector iterators consume lanes of size 4 per access; upstream buffers must be sized to sustain those bursts.
+
+Deployment constraints: The kernel is written for SIMD and VLIW issue slots, so vector-friendly instruction ordering matters for throughput. CHESS pipelining pragmas indicate the compiler is expected to software-pipeline the loop for the target tile. Window and buffer iterators must remain aligned with the intended vector width and tile-local memory limits."
+"debug_risks","validation","https://github.com/Xilinx/Vitis-Tutorials/blob/2024.2/AI_Engine_Development/AIE/Design_Tutorials/02-super_sampling_rate_fir/SingleKernel/aie/aie_kernels/FirSingleStream.cpp","Where would you look first when debugging this Versal AIE kernel for stalls, bad outputs, or memory faults?","#include <adf.h>
+#include ""FirSingleStream.h""
+
+#define MULMAC(N) \
+		taps =  *coeff++; \
+		acc = mul4(data,N,0x3210,1,taps,0,0x0000,1); \
+		acc = mac4(acc,data,N+2,0x3210,1,taps,2,0x0000,1);\
+		acc = mac4(acc,data,N+4,0x3210,1,taps,4,0x0000,1);\
+		acc = mac4(acc,data,N+6,0x3210,1,taps,6,0x0000,1)
+
+#define MACMAC(N) \
+		taps =  *coeff++; \
+		acc = mac4(acc,data,N,0x3210,1,taps,0,0x0000,1); \
+		acc = mac4(acc,data,N+2,0x3210,1,taps,2,0x0000,1);\
+		acc = mac4(acc,data,N+4,0x3210,1,taps,4,0x0000,1);\
+		acc = mac4(acc,data,N+6,0x3210,1,taps,6,0x0000,1)
+
+
+template <int NSamples,int ShiftAcc>
+void SingleStream::FIR_SingleStream<NSamples,ShiftAcc>::filter(input_stream_cint16* sin, output_stream_cint16* sout)
+{
+	v8cint16 *coeff =  (v8cint16*) weights;
+	v8cint16 taps = undef_v8cint16();
+	v32cint16 *ptr_delay_line = (v32cint16 *)delay_line;
+	v32cint16 data = *ptr_delay_line;
+
+	v4cacc48 acc = undef_v4cacc48();
+
+// Computes 32 samples per iteration
+	for(int i=0;i<NSamples/32;i++)
+		chess_prepare_for_pipelining
+		chess_loop_range(NSamples/32,NSamples/32)
+		chess_pipeline_adjust_preamble(10)
+	{
+		MULMAC(1);
+		MACMAC(9);
+		MACMAC(17);
+		data = upd_v(data,0,readincr_v4(sin));
+		MACMAC(25);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(5);
+		MACMAC(13);
+		MACMAC(21);
+		data = upd_v(data,1,readincr_v4(sin));
+		MACMAC(29);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(9);
+		MACMAC(17);
+		MACMAC(25);
+		data = upd_v(data,2,readincr_v4(sin));
+		MACMAC(1);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(13);
+		MACMAC(21);
+		MACMAC(29);
+		data = upd_v(data,3,readincr_v4(sin));
+		MACMAC(5);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(17);
+		MACMAC(25);
+		MACMAC(1);
+		data = upd_v(data,4,readincr_v4(sin));
+		MACMAC(9);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(21);
+		MACMAC(29);
+		MACMAC(5);
+		data = upd_v(data,5,readincr_v4(sin));
+		MACMAC(13);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(25);
+		MACMAC(1);
+		MACMAC(9);
+		data = upd_v(data,6,readincr_v4(sin));
+		MACMAC(17);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(29);
+		MACMAC(5);
+		MACMAC(13);
+		data = upd_v(data,7,readincr_v4(sin));
+		MACMAC(21);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+	}
+
+	*ptr_delay_line = data;
+}
+","Debug focus: verify token balance on every stream edge because missing reads or writes can deadlock the graph. Debug focus: inspect vector width assumptions, accumulator precision, and whether the kernelâ€™s data movement matches the graph wiring."
+"debug_risks","validation","aie_dataset/dsp_fir/softdemod_kernel.cpp","Inspect this kernel for failure modes that could cause deadlock, memory violations, or performance regressions on AIE.","#include ""softdemod_kernel.h""
+#include <adf.h>
+#include <aie_api/aie.hpp>
+#include <aie_api/aie_adf.hpp>
+
+using namespace adf;
+
+void softdemod_kernel::softdemod(adf::input_buffer<cfloat, extents<BUFSZ>>& __restrict in,
+#ifndef _DUMPLOOP_
+                                 adf::output_buffer<float, extents<4*BUFSZ>>& __restrict out)
+#else
+                                 adf::output_buffer<float, extents<4*BUFSZ>>& __restrict out,
+                                 adf::output_buffer<cfloat, extents<16*BUFSZ>>& __restrict loopout)
+#endif
+{
+    aie::vector<cfloat,16> ref_const = aie::load_v<16>(constel);
+    auto pIn = aie::begin(in);
+    auto pwbufA16 = aie::begin_restrict_vector<16>(wbufA);
+
+    // Pass 1: subtract each input symbol from all 16 constellation points
+    for (unsigned i = 0; i < BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(BUFSZ)
+    {
+        *pwbufA16++ = aie::sub(ref_const, *pIn++);
+    }
+
+    auto pwbufA8 = aie::begin_restrict_vector<8>(wbufA);
+    auto pwbufB8 = aie::begin_restrict_vector<8>(wbufB);
+
+    // Pass 2: compute squared magnitudes |d|^2
+    for (unsigned i = 0; i < 2*BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(2*BUFSZ)
+	  {
+        *pwbufB8++ = aie::abs_square(*pwbufA8++);
+    }
+
+    pwbufB8 -= 2*BUFSZ;
+
+    aie::accum<accfloat,8> acc_init;
+    acc_init.from_vector(aie::broadcast<float,8>(EADD),0);
+    auto pwbufC8 = aie::begin_restrict_vector<8>(wbufC);
+
+    // Pass 3: compute exp(-|d|^2 * EMULT + EADD) approximation
+    for (unsigned i = 0; i < 2*BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(2*BUFSZ)
+	  {
+        *pwbufC8++ = aie::mac(acc_init, *pwbufB8++, EMULT);
+    }
+
+    pwbufB8 -= 2*BUFSZ;
+    pwbufC8 -= 2*BUFSZ;
+
+    // Pass 4: convert float exponent to int for bit manipulation
+    for (unsigned i = 0; i < 2*BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(2*BUFSZ)
+	  {
+        aie::vector<int32,8> expint = aie::to_fixed(*pwbufC8++, 16);
+        *pwbufB8++ = expint.cast_to<float>();
+    }
+
+    pwbufB8 -= 2*BUFSZ;
+    pwbufC8 -= 2*BUFSZ;
+
+    // Pass 5: clamp negative values to 0
+    for (unsigned i = 0; i < 2*BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(2*BUFSZ)
+	  {
+        aie::mask<8> msk_neg = aie::lt(*pwbufB8, 0.0f);
+        *pwbufC8++ = aie::select(*pwbufB8++, 0.0f, msk_neg);
+    }
+
+    pwbufB8 -= 2*BUFSZ;
+    pwbufC8 -= 2*BUFSZ;
+
+    // Pass 6: tree-reduce exp sums using fpadd with shuffle masks
+    for (unsigned i = 0; i < BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(BUFSZ)
+	  {
+        aie::vector<float,8> expsum;
+        auto expvec1 = *pwbufC8++;
+        auto expvec2 = *pwbufC8++;
+        auto vsum_L1_1 = fpadd(expvec1,expvec1,0,0x67452301);
+        auto vsum_L1_2 = fpadd(expvec2,expvec2,0,0x67452301);
+        auto vsum_L1_3 = fpadd(expvec1,expvec2,0,0x76543210);
+        auto vsum_L2_1 = fpadd(vsum_L1_1,vsum_L1_1,0,0x54761032);
+        auto vsum_L2_2 = fpadd(vsum_L1_2,vsum_L1_2,0,0x54761032);
+        auto vsum_L2_3 = fpadd(vsum_L1_3,vsum_L1_3,0,0x67452301);
+        auto vsum_L2_4 = fpadd(vsum_L1_3,vsum_L1_3,0,0x54761032);
+        aie::vector<float,8> vsum_L3_1 = fpadd(vsum_L2_1,vsum_L2_1,0,0x32107654);
+        aie::vector<float,8> vsum_L3_2 = fpadd(vsum_L2_2,vsum_L2_2,0,0x32107654);
+        aie::vector<float,8> vsum_L3_3 = fpadd(vsum_L2_3,vsum_L2_3,0,0x54761032);
+        aie::vector<float,8> vsum_L3_4 = fpadd(vsum_L2_3,vsum_L2_3,0,0x32107654);
+        aie::vector<float,8> vsum_L3_5 = fpadd(vsum_L2_4,vsum_L2_4,0,0x32107654);
+        expsum[0] = vsum_L3_1[0];
+        expsum[4] = vsum_L3_2[0];
+        expsum[1] = vsum_L3_3[0];
+        expsum[5] = vsum_L3_3[4];
+        expsum[2] = vsum_L3_4[0];
+        expsum[6] = vsum_L3_4[2];
+        expsum[3] = vsum_L3_5[0];
+        expsum[7] = vsum_L3_5[1];
+        *pwbufB8++ = expsum;
+    }
+
+    pwbufB8 -= BUFSZ;
+
+    auto pwbufC4 = aie::begin_restrict_vector<4>(wbufC);
+
+    // Pass 7: compute LLRs = numerator / denominator via inv()
+    for (unsigned i = 0; i < BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(BUFSZ)
+	  {
+        aie::vector<float,8> expsum = *pwbufB8++;
+        *pwbufC4++ = aie::mul(expsum.extract<4>(0),inv(expsum.extract<4>(1)));
+    }
+
+    pwbufC4 -= BUFSZ;
+
+    auto pOut = aie::begin_vector<4>(out);
+
+    // Pass 8: write output
+    for (unsigned i = 0; i < BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(BUFSZ)
+	  {
+		*pOut++ = *pwbufC4++;
+	  }
+}
+","Debug focus: verify window extents, iterator stride, and loop trip counts so the kernel does not read past tile-local memory or mis-size buffers. Debug focus: inspect vector width assumptions, accumulator precision, and whether the kernelâ€™s data movement matches the graph wiring."
+"feature_extraction","validation","https://github.com/Xilinx/Vitis-Tutorials/blob/2024.2/AI_Engine_Development/AIE/Design_Tutorials/02-super_sampling_rate_fir/SingleKernel/aie/aie_kernels/FirSingleStream.cpp","Extract the main hardware-facing features from this AIE kernel: ports, vector types, and intrinsic calls.","#include <adf.h>
+#include ""FirSingleStream.h""
+
+#define MULMAC(N) \
+		taps =  *coeff++; \
+		acc = mul4(data,N,0x3210,1,taps,0,0x0000,1); \
+		acc = mac4(acc,data,N+2,0x3210,1,taps,2,0x0000,1);\
+		acc = mac4(acc,data,N+4,0x3210,1,taps,4,0x0000,1);\
+		acc = mac4(acc,data,N+6,0x3210,1,taps,6,0x0000,1)
+
+#define MACMAC(N) \
+		taps =  *coeff++; \
+		acc = mac4(acc,data,N,0x3210,1,taps,0,0x0000,1); \
+		acc = mac4(acc,data,N+2,0x3210,1,taps,2,0x0000,1);\
+		acc = mac4(acc,data,N+4,0x3210,1,taps,4,0x0000,1);\
+		acc = mac4(acc,data,N+6,0x3210,1,taps,6,0x0000,1)
+
+
+template <int NSamples,int ShiftAcc>
+void SingleStream::FIR_SingleStream<NSamples,ShiftAcc>::filter(input_stream_cint16* sin, output_stream_cint16* sout)
+{
+	v8cint16 *coeff =  (v8cint16*) weights;
+	v8cint16 taps = undef_v8cint16();
+	v32cint16 *ptr_delay_line = (v32cint16 *)delay_line;
+	v32cint16 data = *ptr_delay_line;
+
+	v4cacc48 acc = undef_v4cacc48();
+
+// Computes 32 samples per iteration
+	for(int i=0;i<NSamples/32;i++)
+		chess_prepare_for_pipelining
+		chess_loop_range(NSamples/32,NSamples/32)
+		chess_pipeline_adjust_preamble(10)
+	{
+		MULMAC(1);
+		MACMAC(9);
+		MACMAC(17);
+		data = upd_v(data,0,readincr_v4(sin));
+		MACMAC(25);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(5);
+		MACMAC(13);
+		MACMAC(21);
+		data = upd_v(data,1,readincr_v4(sin));
+		MACMAC(29);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(9);
+		MACMAC(17);
+		MACMAC(25);
+		data = upd_v(data,2,readincr_v4(sin));
+		MACMAC(1);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(13);
+		MACMAC(21);
+		MACMAC(29);
+		data = upd_v(data,3,readincr_v4(sin));
+		MACMAC(5);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(17);
+		MACMAC(25);
+		MACMAC(1);
+		data = upd_v(data,4,readincr_v4(sin));
+		MACMAC(9);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(21);
+		MACMAC(29);
+		MACMAC(5);
+		data = upd_v(data,5,readincr_v4(sin));
+		MACMAC(13);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(25);
+		MACMAC(1);
+		MACMAC(9);
+		data = upd_v(data,6,readincr_v4(sin));
+		MACMAC(17);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(29);
+		MACMAC(5);
+		MACMAC(13);
+		data = upd_v(data,7,readincr_v4(sin));
+		MACMAC(21);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+	}
+
+	*ptr_delay_line = data;
+}
+","Classification: AIE kernel. Kernel ports: input_stream_cint16* sin; output_stream_cint16* sout.
+
+Interfaces: Stream.
+Vector types: v8cint16, v32cint16, v4cacc48.
+AIE intrinsics and APIs: mul4, mac4, readincr_v4, writeincr_v4, upd_v, srs.
+Primary operation: Finite impulse response filtering using complex multiply-accumulate across streamed samples and tap coefficients."
+"feature_extraction","validation","aie_dataset/dsp_fir/softdemod_kernel.cpp","Identify the low-level AIE building blocks used in this kernel source.","#include ""softdemod_kernel.h""
+#include <adf.h>
+#include <aie_api/aie.hpp>
+#include <aie_api/aie_adf.hpp>
+
+using namespace adf;
+
+void softdemod_kernel::softdemod(adf::input_buffer<cfloat, extents<BUFSZ>>& __restrict in,
+#ifndef _DUMPLOOP_
+                                 adf::output_buffer<float, extents<4*BUFSZ>>& __restrict out)
+#else
+                                 adf::output_buffer<float, extents<4*BUFSZ>>& __restrict out,
+                                 adf::output_buffer<cfloat, extents<16*BUFSZ>>& __restrict loopout)
+#endif
+{
+    aie::vector<cfloat,16> ref_const = aie::load_v<16>(constel);
+    auto pIn = aie::begin(in);
+    auto pwbufA16 = aie::begin_restrict_vector<16>(wbufA);
+
+    // Pass 1: subtract each input symbol from all 16 constellation points
+    for (unsigned i = 0; i < BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(BUFSZ)
+    {
+        *pwbufA16++ = aie::sub(ref_const, *pIn++);
+    }
+
+    auto pwbufA8 = aie::begin_restrict_vector<8>(wbufA);
+    auto pwbufB8 = aie::begin_restrict_vector<8>(wbufB);
+
+    // Pass 2: compute squared magnitudes |d|^2
+    for (unsigned i = 0; i < 2*BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(2*BUFSZ)
+	  {
+        *pwbufB8++ = aie::abs_square(*pwbufA8++);
+    }
+
+    pwbufB8 -= 2*BUFSZ;
+
+    aie::accum<accfloat,8> acc_init;
+    acc_init.from_vector(aie::broadcast<float,8>(EADD),0);
+    auto pwbufC8 = aie::begin_restrict_vector<8>(wbufC);
+
+    // Pass 3: compute exp(-|d|^2 * EMULT + EADD) approximation
+    for (unsigned i = 0; i < 2*BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(2*BUFSZ)
+	  {
+        *pwbufC8++ = aie::mac(acc_init, *pwbufB8++, EMULT);
+    }
+
+    pwbufB8 -= 2*BUFSZ;
+    pwbufC8 -= 2*BUFSZ;
+
+    // Pass 4: convert float exponent to int for bit manipulation
+    for (unsigned i = 0; i < 2*BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(2*BUFSZ)
+	  {
+        aie::vector<int32,8> expint = aie::to_fixed(*pwbufC8++, 16);
+        *pwbufB8++ = expint.cast_to<float>();
+    }
+
+    pwbufB8 -= 2*BUFSZ;
+    pwbufC8 -= 2*BUFSZ;
+
+    // Pass 5: clamp negative values to 0
+    for (unsigned i = 0; i < 2*BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(2*BUFSZ)
+	  {
+        aie::mask<8> msk_neg = aie::lt(*pwbufB8, 0.0f);
+        *pwbufC8++ = aie::select(*pwbufB8++, 0.0f, msk_neg);
+    }
+
+    pwbufB8 -= 2*BUFSZ;
+    pwbufC8 -= 2*BUFSZ;
+
+    // Pass 6: tree-reduce exp sums using fpadd with shuffle masks
+    for (unsigned i = 0; i < BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(BUFSZ)
+	  {
+        aie::vector<float,8> expsum;
+        auto expvec1 = *pwbufC8++;
+        auto expvec2 = *pwbufC8++;
+        auto vsum_L1_1 = fpadd(expvec1,expvec1,0,0x67452301);
+        auto vsum_L1_2 = fpadd(expvec2,expvec2,0,0x67452301);
+        auto vsum_L1_3 = fpadd(expvec1,expvec2,0,0x76543210);
+        auto vsum_L2_1 = fpadd(vsum_L1_1,vsum_L1_1,0,0x54761032);
+        auto vsum_L2_2 = fpadd(vsum_L1_2,vsum_L1_2,0,0x54761032);
+        auto vsum_L2_3 = fpadd(vsum_L1_3,vsum_L1_3,0,0x67452301);
+        auto vsum_L2_4 = fpadd(vsum_L1_3,vsum_L1_3,0,0x54761032);
+        aie::vector<float,8> vsum_L3_1 = fpadd(vsum_L2_1,vsum_L2_1,0,0x32107654);
+        aie::vector<float,8> vsum_L3_2 = fpadd(vsum_L2_2,vsum_L2_2,0,0x32107654);
+        aie::vector<float,8> vsum_L3_3 = fpadd(vsum_L2_3,vsum_L2_3,0,0x54761032);
+        aie::vector<float,8> vsum_L3_4 = fpadd(vsum_L2_3,vsum_L2_3,0,0x32107654);
+        aie::vector<float,8> vsum_L3_5 = fpadd(vsum_L2_4,vsum_L2_4,0,0x32107654);
+        expsum[0] = vsum_L3_1[0];
+        expsum[4] = vsum_L3_2[0];
+        expsum[1] = vsum_L3_3[0];
+        expsum[5] = vsum_L3_3[4];
+        expsum[2] = vsum_L3_4[0];
+        expsum[6] = vsum_L3_4[2];
+        expsum[3] = vsum_L3_5[0];
+        expsum[7] = vsum_L3_5[1];
+        *pwbufB8++ = expsum;
+    }
+
+    pwbufB8 -= BUFSZ;
+
+    auto pwbufC4 = aie::begin_restrict_vector<4>(wbufC);
+
+    // Pass 7: compute LLRs = numerator / denominator via inv()
+    for (unsigned i = 0; i < BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(BUFSZ)
+	  {
+        aie::vector<float,8> expsum = *pwbufB8++;
+        *pwbufC4++ = aie::mul(expsum.extract<4>(0),inv(expsum.extract<4>(1)));
+    }
+
+    pwbufC4 -= BUFSZ;
+
+    auto pOut = aie::begin_vector<4>(out);
+
+    // Pass 8: write output
+    for (unsigned i = 0; i < BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(BUFSZ)
+	  {
+		*pOut++ = *pwbufC4++;
+	  }
+}
+","Classification: AIE kernel. I/O ports are not trivially recoverable from the source signature.
+
+Interfaces: Window.
+Vector types: aie::vector<cfloat,16>, aie::vector<int32,8>, aie::vector<float,8>, aie::accum<accfloat,8>.
+AIE intrinsics and APIs: aie::vector, aie::load_v, aie::begin, aie::begin_restrict_vector, aie::sub, aie::abs_square, aie::accum, aie::broadcast, aie::mac, aie::to_fixed, aie::mask, aie::lt.
+Primary operation: AIE dataflow computation over vectorized kernels and graph connections."
+"general_analysis","validation","https://github.com/Xilinx/Vitis-Tutorials/blob/2024.2/AI_Engine_Development/AIE/Design_Tutorials/02-super_sampling_rate_fir/SingleKernel/aie/aie_kernels/FirSingleStream.cpp","Analyze this Versal AIE kernel for vectorization, interfaces, buffer requirements, and the mathematical operation performed.","#include <adf.h>
+#include ""FirSingleStream.h""
+
+#define MULMAC(N) \
+		taps =  *coeff++; \
+		acc = mul4(data,N,0x3210,1,taps,0,0x0000,1); \
+		acc = mac4(acc,data,N+2,0x3210,1,taps,2,0x0000,1);\
+		acc = mac4(acc,data,N+4,0x3210,1,taps,4,0x0000,1);\
+		acc = mac4(acc,data,N+6,0x3210,1,taps,6,0x0000,1)
+
+#define MACMAC(N) \
+		taps =  *coeff++; \
+		acc = mac4(acc,data,N,0x3210,1,taps,0,0x0000,1); \
+		acc = mac4(acc,data,N+2,0x3210,1,taps,2,0x0000,1);\
+		acc = mac4(acc,data,N+4,0x3210,1,taps,4,0x0000,1);\
+		acc = mac4(acc,data,N+6,0x3210,1,taps,6,0x0000,1)
+
+
+template <int NSamples,int ShiftAcc>
+void SingleStream::FIR_SingleStream<NSamples,ShiftAcc>::filter(input_stream_cint16* sin, output_stream_cint16* sout)
+{
+	v8cint16 *coeff =  (v8cint16*) weights;
+	v8cint16 taps = undef_v8cint16();
+	v32cint16 *ptr_delay_line = (v32cint16 *)delay_line;
+	v32cint16 data = *ptr_delay_line;
+
+	v4cacc48 acc = undef_v4cacc48();
+
+// Computes 32 samples per iteration
+	for(int i=0;i<NSamples/32;i++)
+		chess_prepare_for_pipelining
+		chess_loop_range(NSamples/32,NSamples/32)
+		chess_pipeline_adjust_preamble(10)
+	{
+		MULMAC(1);
+		MACMAC(9);
+		MACMAC(17);
+		data = upd_v(data,0,readincr_v4(sin));
+		MACMAC(25);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(5);
+		MACMAC(13);
+		MACMAC(21);
+		data = upd_v(data,1,readincr_v4(sin));
+		MACMAC(29);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(9);
+		MACMAC(17);
+		MACMAC(25);
+		data = upd_v(data,2,readincr_v4(sin));
+		MACMAC(1);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(13);
+		MACMAC(21);
+		MACMAC(29);
+		data = upd_v(data,3,readincr_v4(sin));
+		MACMAC(5);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(17);
+		MACMAC(25);
+		MACMAC(1);
+		data = upd_v(data,4,readincr_v4(sin));
+		MACMAC(9);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(21);
+		MACMAC(29);
+		MACMAC(5);
+		data = upd_v(data,5,readincr_v4(sin));
+		MACMAC(13);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(25);
+		MACMAC(1);
+		MACMAC(9);
+		data = upd_v(data,6,readincr_v4(sin));
+		MACMAC(17);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+
+		MULMAC(29);
+		MACMAC(5);
+		MACMAC(13);
+		data = upd_v(data,7,readincr_v4(sin));
+		MACMAC(21);
+		writeincr_v4(sout,srs(acc,ShiftAcc));
+		coeff -= 4;
+	}
+
+	*ptr_delay_line = data;
+}
+","Summary: This AIE kernel uses Stream interfaces and v8cint16, v32cint16, v4cacc48 to implement Finite impulse response filtering using complex multiply-accumulate across streamed samples and tap coefficients.
+
+Artifact classification: AIE kernel. Kernel ports: input_stream_cint16* sin; output_stream_cint16* sout.
+
+Interfaces: Stream.
+Vector types: v8cint16, v32cint16, v4cacc48.
+Intrinsics and AIE APIs: mul4, mac4, readincr_v4, writeincr_v4, upd_v, srs.
+
+Buffer requirements: No explicit window dimensions appear in the kernel; correct execution depends on balanced stream token rates across producer and consumer kernels.
+
+Mathematical or architectural role: Finite impulse response filtering using complex multiply-accumulate across streamed samples and tap coefficients.
+
+AIE-specific constraints: The kernel is written for SIMD and VLIW issue slots, so vector-friendly instruction ordering matters for throughput. CHESS pipelining pragmas indicate the compiler is expected to software-pipeline the loop for the target tile. Stream interfaces require exact producer-consumer balance; missing reads or writes can deadlock the graph."
+"general_analysis","validation","aie_dataset/dsp_fir/softdemod_kernel.cpp","Analyze this Versal AIE kernel for vectorization, interfaces, buffer requirements, and the mathematical operation performed.","#include ""softdemod_kernel.h""
+#include <adf.h>
+#include <aie_api/aie.hpp>
+#include <aie_api/aie_adf.hpp>
+
+using namespace adf;
+
+void softdemod_kernel::softdemod(adf::input_buffer<cfloat, extents<BUFSZ>>& __restrict in,
+#ifndef _DUMPLOOP_
+                                 adf::output_buffer<float, extents<4*BUFSZ>>& __restrict out)
+#else
+                                 adf::output_buffer<float, extents<4*BUFSZ>>& __restrict out,
+                                 adf::output_buffer<cfloat, extents<16*BUFSZ>>& __restrict loopout)
+#endif
+{
+    aie::vector<cfloat,16> ref_const = aie::load_v<16>(constel);
+    auto pIn = aie::begin(in);
+    auto pwbufA16 = aie::begin_restrict_vector<16>(wbufA);
+
+    // Pass 1: subtract each input symbol from all 16 constellation points
+    for (unsigned i = 0; i < BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(BUFSZ)
+    {
+        *pwbufA16++ = aie::sub(ref_const, *pIn++);
+    }
+
+    auto pwbufA8 = aie::begin_restrict_vector<8>(wbufA);
+    auto pwbufB8 = aie::begin_restrict_vector<8>(wbufB);
+
+    // Pass 2: compute squared magnitudes |d|^2
+    for (unsigned i = 0; i < 2*BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(2*BUFSZ)
+	  {
+        *pwbufB8++ = aie::abs_square(*pwbufA8++);
+    }
+
+    pwbufB8 -= 2*BUFSZ;
+
+    aie::accum<accfloat,8> acc_init;
+    acc_init.from_vector(aie::broadcast<float,8>(EADD),0);
+    auto pwbufC8 = aie::begin_restrict_vector<8>(wbufC);
+
+    // Pass 3: compute exp(-|d|^2 * EMULT + EADD) approximation
+    for (unsigned i = 0; i < 2*BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(2*BUFSZ)
+	  {
+        *pwbufC8++ = aie::mac(acc_init, *pwbufB8++, EMULT);
+    }
+
+    pwbufB8 -= 2*BUFSZ;
+    pwbufC8 -= 2*BUFSZ;
+
+    // Pass 4: convert float exponent to int for bit manipulation
+    for (unsigned i = 0; i < 2*BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(2*BUFSZ)
+	  {
+        aie::vector<int32,8> expint = aie::to_fixed(*pwbufC8++, 16);
+        *pwbufB8++ = expint.cast_to<float>();
+    }
+
+    pwbufB8 -= 2*BUFSZ;
+    pwbufC8 -= 2*BUFSZ;
+
+    // Pass 5: clamp negative values to 0
+    for (unsigned i = 0; i < 2*BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(2*BUFSZ)
+	  {
+        aie::mask<8> msk_neg = aie::lt(*pwbufB8, 0.0f);
+        *pwbufC8++ = aie::select(*pwbufB8++, 0.0f, msk_neg);
+    }
+
+    pwbufB8 -= 2*BUFSZ;
+    pwbufC8 -= 2*BUFSZ;
+
+    // Pass 6: tree-reduce exp sums using fpadd with shuffle masks
+    for (unsigned i = 0; i < BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(BUFSZ)
+	  {
+        aie::vector<float,8> expsum;
+        auto expvec1 = *pwbufC8++;
+        auto expvec2 = *pwbufC8++;
+        auto vsum_L1_1 = fpadd(expvec1,expvec1,0,0x67452301);
+        auto vsum_L1_2 = fpadd(expvec2,expvec2,0,0x67452301);
+        auto vsum_L1_3 = fpadd(expvec1,expvec2,0,0x76543210);
+        auto vsum_L2_1 = fpadd(vsum_L1_1,vsum_L1_1,0,0x54761032);
+        auto vsum_L2_2 = fpadd(vsum_L1_2,vsum_L1_2,0,0x54761032);
+        auto vsum_L2_3 = fpadd(vsum_L1_3,vsum_L1_3,0,0x67452301);
+        auto vsum_L2_4 = fpadd(vsum_L1_3,vsum_L1_3,0,0x54761032);
+        aie::vector<float,8> vsum_L3_1 = fpadd(vsum_L2_1,vsum_L2_1,0,0x32107654);
+        aie::vector<float,8> vsum_L3_2 = fpadd(vsum_L2_2,vsum_L2_2,0,0x32107654);
+        aie::vector<float,8> vsum_L3_3 = fpadd(vsum_L2_3,vsum_L2_3,0,0x54761032);
+        aie::vector<float,8> vsum_L3_4 = fpadd(vsum_L2_3,vsum_L2_3,0,0x32107654);
+        aie::vector<float,8> vsum_L3_5 = fpadd(vsum_L2_4,vsum_L2_4,0,0x32107654);
+        expsum[0] = vsum_L3_1[0];
+        expsum[4] = vsum_L3_2[0];
+        expsum[1] = vsum_L3_3[0];
+        expsum[5] = vsum_L3_3[4];
+        expsum[2] = vsum_L3_4[0];
+        expsum[6] = vsum_L3_4[2];
+        expsum[3] = vsum_L3_5[0];
+        expsum[7] = vsum_L3_5[1];
+        *pwbufB8++ = expsum;
+    }
+
+    pwbufB8 -= BUFSZ;
+
+    auto pwbufC4 = aie::begin_restrict_vector<4>(wbufC);
+
+    // Pass 7: compute LLRs = numerator / denominator via inv()
+    for (unsigned i = 0; i < BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(BUFSZ)
+	  {
+        aie::vector<float,8> expsum = *pwbufB8++;
+        *pwbufC4++ = aie::mul(expsum.extract<4>(0),inv(expsum.extract<4>(1)));
+    }
+
+    pwbufC4 -= BUFSZ;
+
+    auto pOut = aie::begin_vector<4>(out);
+
+    // Pass 8: write output
+    for (unsigned i = 0; i < BUFSZ; i++)
+		    chess_prepare_for_pipelining
+		    chess_loop_count(BUFSZ)
+	  {
+		*pOut++ = *pwbufC4++;
+	  }
+}
+","Summary: This AIE kernel uses Window interfaces and aie::vector<cfloat,16>, aie::vector<int32,8>, aie::vector<float,8> to implement AIE dataflow computation over vectorized kernels and graph connections.
+
+Artifact classification: AIE kernel. I/O ports are not trivially recoverable from the source signature.
+
+Interfaces: Window.
+Vector types: aie::vector<cfloat,16>, aie::vector<int32,8>, aie::vector<float,8>, aie::accum<accfloat,8>.
+Intrinsics and AIE APIs: aie::vector, aie::load_v, aie::begin, aie::begin_restrict_vector, aie::sub, aie::abs_square, aie::accum, aie::broadcast, aie::mac, aie::to_fixed, aie::mask, aie::lt.
+
+Buffer requirements: Kernel vector iterators consume lanes of size 4 per access; upstream buffers must be sized to sustain those bursts.
+
+Mathematical or architectural role: AIE dataflow computation over vectorized kernels and graph connections.
+
+AIE-specific constraints: The kernel is written for SIMD and VLIW issue slots, so vector-friendly instruction ordering matters for throughput. CHESS pipelining pragmas indicate the compiler is expected to software-pipeline the loop for the target tile. Window and buffer iterators must remain aligned with the intended vector width and tile-local memory limits."

@@ -1,0 +1,155 @@
+/*
+SOURCE: rehohoho/onnx2versal, branch master
+PATH: design/aie_src/pool.h
+DOMAIN: AIE Source
+INTERFACE: Window
+KEY INTRINSICS: Unknown
+VECTOR TYPES: Unknown
+*/
+
+#ifndef POOL_H_
+#define POOL_H_
+
+#include <adf.h>
+#include <assert.h>
+
+
+/** 
+ * @defgroup Pool2DKernels
+ * @ingroup Pool2D
+ * 
+ * @details
+ * Design Notes
+ * - Bandwidth limited
+ * - 2 accs causes spilling
+ * - All kernels assume INP_W divisible by OUT_W
+ * 
+ * @{
+ */
+
+/**
+ * @brief Scalar implementation for BHWC maxpool,
+ * MaxpoolScalarBHWC::filter<24,32,16,1,6> total = 7673
+ */
+template <typename TT, int INP_H, int INP_W, int OUT_H, int OUT_W, int B, int C, int KH, int KW, int STEP_H, int STEP_W>
+class MaxpoolScalarBHWC {
+  public:
+    void filter(
+      input_window<TT>* in,      // BHWC (1x24x24x6)
+      output_window<TT>* out     // BPQC (1x12x12x6)
+    );
+    static void registerKernelClass() {
+      REGISTER_FUNCTION(MaxpoolScalarBHWC::filter);
+    }
+};
+
+
+/**
+ * @brief Scalar implementation for BCHW maxpool,
+ * MaxpoolScalarBCHW::filter<24,32,16,1,6> total = 11302
+ */
+template <typename TT, int INP_H, int INP_W, int OUT_H, int OUT_W, int B, int C, int KH, int KW, int STEP_H, int STEP_W>
+class MaxpoolScalarBCHW {
+  public:
+    void filter(
+      input_window<TT>* in,      // BCHW (1x6x24x24)
+      output_window<TT>* out     // BCPQ (1x6x12x12)
+    );
+    static void registerKernelClass() {
+      REGISTER_FUNCTION(MaxpoolScalarBCHW::filter);
+    }
+};
+
+
+/**
+ * @brief Vector implementation for float BCHW maxpool with 2x2 kernel,
+ * requires INP_W%8==0, OUT_W%4==0, KH==KW==2, TT==float, 
+ * Maxpool2x2FloatBCHW::filter<24,32,16,1,6> total = 901
+ */
+template <typename TT, int INP_H, int INP_W, int OUT_H, int OUT_W, int B, int C, int KH, int KW, int STEP_H, int STEP_W>
+class Maxpool2x2FloatBCHW {
+  public:
+    void filter(
+      input_window<float>* in_window,      // BCHW (1x6x24x24)
+      output_window<float>* out_window     // BCPQ (1x6x12x12)
+    );
+    static void registerKernelClass() {
+      static_assert(INP_W % 8 == 0);
+      static_assert(OUT_W % 4 == 0);
+      static_assert(KH == 2);
+      static_assert(KW == 2);
+      static_assert((std::is_same<TT, float>::value));
+      REGISTER_FUNCTION(Maxpool2x2FloatBCHW::filter);
+    }
+};
+
+
+/**
+ * @brief Vector implementation for int8 BCHW maxpool with 2x2 kernel,
+ * requires INP_W%16==0, OUT_W%8==0, KH==KW==2, TT==int8_t or uint8_t, 
+ * Maxpool2x2Int8BCHW::filter<24,32,16,1,6> total = 324
+ */
+template <typename TT, int INP_H, int INP_W, int OUT_H, int OUT_W, int B, int C, int KH, int KW, int STEP_H, int STEP_W>
+class Maxpool2x2Int8BCHW {
+    static constexpr int RUN_16CHUNK = INP_W % 32 != 0;
+  public:
+    void filter(
+      input_window<TT>* in_window,      // BCHW (1x6x24x24)
+      output_window<TT>* out_window     // BCPQ (1x6x12x12)
+    );
+    static void registerKernelClass() {
+      static_assert(INP_W % 16 == 0);
+      static_assert(OUT_W % 8 == 0);
+      static_assert(KH == 2);
+      static_assert(KW == 2);
+      static_assert((std::is_same<TT, int8_t>::value) || (std::is_same<TT, uint8_t>::value));
+      REGISTER_FUNCTION(Maxpool2x2Int8BCHW::filter);
+    }
+};
+
+
+/**
+ * @brief Vector implementation for int8 BCHW maxpool with 2x2 kernel,
+ * requires INP_W%16==0, OUT_W%8==0, KH==KW==2,
+ * Maxpool3x3Int8BCHW<114,128,56,64,1,1,3,3,2,2> total = 10136
+ */
+template <typename TT, int INP_H, int INP_W, int OUT_H, int OUT_W, int B, int C, int KH, int KW, int STEP_H, int STEP_W>
+class Maxpool3x3Int8BCHW {
+    static constexpr int RUN_16CHUNK = INP_W % 32 != 0;
+  public:
+    void filter(
+      input_window<TT>* in_window,      // BCHW (1x6x24x24)
+      output_window<TT>* out_window     // BCPQ (1x6x12x12)
+    );
+    static void registerKernelClass() {
+      static_assert(INP_W % 32 == 0);
+      static_assert(OUT_W % 16 == 0);
+      static_assert(KH == 3);
+      static_assert(KW == 3);
+      static_assert(STEP_W == 2);
+      static_assert(STEP_H == 2);
+      static_assert((std::is_same<TT, TT>::value) || (std::is_same<TT, uint8_t>::value));
+      REGISTER_FUNCTION(Maxpool3x3Int8BCHW::filter);
+    }
+};
+
+
+/**
+ * @brief Scalar implementation for BCHW avgpool,
+ * AvgpoolScalarBCHW::filter<24,32,16,1,6> total = 15766
+ */
+template <typename TT, int INP_H, int INP_W, int OUT_H, int OUT_W, int B, int C, int KH, int KW, int STEP_H, int STEP_W>
+class AvgpoolScalarBCHW {
+  public:
+    void filter(
+      input_window<TT>* in,      // BCHW (1x6x24x24)
+      output_window<TT>* out     // BCPQ (1x6x12x12)
+    );
+    static void registerKernelClass() {
+      REGISTER_FUNCTION(AvgpoolScalarBCHW::filter);
+    }
+};
+/** @}*/
+
+
+#endif // POOL_H_

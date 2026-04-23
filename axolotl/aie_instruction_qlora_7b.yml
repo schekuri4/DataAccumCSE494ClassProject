@@ -1,0 +1,92 @@
+base_model: Qwen/Qwen2.5-7B-Instruct
+tokenizer_type: AutoTokenizer
+trust_remote_code: false
+
+datasets:
+  - path: data/processed/aie_instruction_train.jsonl
+    ds_type: json
+    type:
+      system_prompt: ""
+      field_instruction: instruction
+      field_input: context
+      field_output: response
+      format: |-
+        ### Instruction:
+        {instruction}
+
+        ### Context:
+        {input}
+
+        ### Response:
+      no_input_format: |-
+        ### Instruction:
+        {instruction}
+
+        ### Response:
+
+test_datasets:
+  - path: data/processed/aie_instruction_validation.jsonl
+    ds_type: json
+    type:
+      system_prompt: ""
+      field_instruction: instruction
+      field_input: context
+      field_output: response
+      format: |-
+        ### Instruction:
+        {instruction}
+
+        ### Context:
+        {input}
+
+        ### Response:
+      no_input_format: |-
+        ### Instruction:
+        {instruction}
+
+        ### Response:
+
+adapter: qlora
+load_in_4bit: true
+strict: false
+gradient_checkpointing: true
+
+bnb_config_kwargs:
+  bnb_4bit_quant_type: nf4
+  bnb_4bit_use_double_quant: true
+  bnb_4bit_compute_dtype: float16
+
+sequence_len: 1024
+sample_packing: true
+pad_to_sequence_len: true
+
+micro_batch_size: 1
+gradient_accumulation_steps: 32
+num_epochs: 3
+learning_rate: 0.00015
+optimizer: adamw_torch_fused
+lr_scheduler: cosine
+warmup_ratio: 0.03
+
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target_linear: true
+
+train_on_inputs: false
+group_by_length: true
+
+fp16: true
+tf32: auto
+wandb_mode: disabled
+
+val_set_size: 0.0
+eval_strategy: steps
+eval_steps: 100
+save_strategy: steps
+save_steps: 100
+save_total_limit: 2
+logging_steps: 5
+
+output_dir: ./outputs/aie-instruction-qwen-7b-qlora-10gb
+dataset_prepared_path: ./prepared/aie-instruction-qwen-7b-qlora-10gb

@@ -1,0 +1,24 @@
+/*
+SOURCE: Xilinx/mlir-aie, branch main
+PATH: test/unit_tests/aievec_tests/aie2/i16xi16_mul_elem/convert_aie-ml.cc
+DOMAIN: AIE Source
+INTERFACE: Unknown
+KEY INTRINSICS: Unknown
+VECTOR TYPES: v32int16, v32acc32, v10, v11
+*/
+
+void mul_elem(int16_t *restrict v1, int16_t *restrict v2,
+              int16_t *restrict v3) {
+  size_t v4 = 0;
+  size_t v5 = 1024;
+  size_t v6 = 32;
+  for (size_t v7 = v4; v7 < v5; v7 += v6)
+    chess_prepare_for_pipelining chess_loop_range(32, 32) {
+      v32int16 v8 = *(v32int16 *)(v1 + v7);
+      v32int16 v9 = *(v32int16 *)(v2 + v7);
+      v32acc32 v10 = mul_elem_32(v9, v8);
+      v32int16 v11 = srs_to_v32int16(v10, 0);
+      *(v32int16 *)(v3 + v7) = v11;
+    }
+  return;
+}

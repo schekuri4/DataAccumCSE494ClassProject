@@ -1,0 +1,29 @@
+# Python envs
+.venv/
+.wsl-venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Caches
+.cache/
+.claude/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local assistant / tool caches
+unsloth_compiled_cache/
+
+# Fine-tune artifacts (model weights, checkpoints) - too large for git
+outputs/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+
+# Temporary scratch scripts
+scripts/_*.py

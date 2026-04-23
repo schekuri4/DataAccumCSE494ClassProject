@@ -1,0 +1,25 @@
+/*
+SOURCE: advent-lab/GAMA, branch main
+PATH: aie/single_aie_exp/aie_unconstr_buf/aie_i8_i32_48x240x48_api4x8x8/kernels/para.h
+DOMAIN: AIE Source
+INTERFACE: Window
+KEY INTRINSICS: Unknown
+VECTOR TYPES: Unknown
+*/
+
+#ifndef PARA_H
+#define PARA_H
+#include <adf.h>
+#include <adf/stream/types.h>
+#include <aie_api/aie.hpp>
+const int L0_h1 = 48;
+const int L0_w1 = 240;
+const int L0_w2 = 48;
+const int DATA_INT16 = 2;
+
+using namespace adf;
+
+void mm_kernel0(input_buffer<int8> &__restrict matA, input_buffer<int8> &__restrict matB,
+                output_buffer<int32> &__restrict matC);
+
+#endif
