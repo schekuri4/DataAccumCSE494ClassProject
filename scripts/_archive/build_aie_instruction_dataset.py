@@ -3,7 +3,13 @@ import difflib
 import hashlib
 import json
 import re
+import sys as _sys
 from pathlib import Path
+
+# Make sibling scripts importable regardless of how this file is launched.
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(_SCRIPTS_DIR) not in _sys.path:
+    _sys.path.insert(0, str(_SCRIPTS_DIR))
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +19,728 @@ OUTPUT_ALL = OUTPUT_DIR / "aie_instruction_all.jsonl"
 OUTPUT_TRAIN = OUTPUT_DIR / "aie_instruction_train.jsonl"
 OUTPUT_VALIDATION = OUTPUT_DIR / "aie_instruction_validation.jsonl"
 OUTPUT_UPLOAD = OUTPUT_DIR / "aie_sft_upload_ready.jsonl"
+
+OUTPUT_ALL_V2 = OUTPUT_DIR / "aie_instruction_v2_all.jsonl"
+OUTPUT_TRAIN_V2 = OUTPUT_DIR / "aie_instruction_v2_train.jsonl"
+OUTPUT_VALIDATION_V2 = OUTPUT_DIR / "aie_instruction_v2_validation.jsonl"
+OUTPUT_UPLOAD_V2 = OUTPUT_DIR / "aie_sft_v2_upload_ready.jsonl"
+
+# When True, debug-response variants emit the full corrected source code (no diff,
+# no lead sentence, no symptom/anchor/rationale prose). Flipped via --v2 CLI flag.
+V2_MODE = False
+
+
+def _v2_lang_for_path(relative_path: str | None) -> str:
+    if not relative_path:
+        return "cpp"
+    lower = str(relative_path).lower()
+    if lower.endswith((".h", ".hpp")):
+        return "cpp"
+    return "cpp"
+
+
+def build_v2_code_response(correct_text: str, relative_path: str | None = None) -> str:
+    """V2 response: the full corrected source, fenced, with no surrounding prose.
+    Whitespace is normalized (strip trailing whitespace per line, single trailing newline)."""
+    lang = _v2_lang_for_path(relative_path)
+    text = correct_text or ""
+    # Strip trailing whitespace on each line and drop excess trailing blank lines
+    # so the model doesn't learn to reproduce noise from source files.
+    normalized_lines = [line.rstrip() for line in text.splitlines()]
+    while normalized_lines and normalized_lines[-1] == "":
+        normalized_lines.pop()
+    body = "\n".join(normalized_lines)
+    return f"```{lang}\n{body}\n```"
+
+
+# ---------------------------------------------------------------------------
+# V2 instruction paraphrases
+#
+# V1 instructions were formulaic ("This AIE source has a `subtraction_instead_of_addition`
+# issue. The bug is explicit. ...") which (a) leaks the bug slug the model won't see at
+# inference and (b) trains the model to pattern-match on the sentence template instead of
+# on the code. V2 replaces these with:
+#   - a diverse pool of natural-English paraphrases,
+#   - tier-aware hint density (easy => often no hint; extra_hard => rarely name the bug),
+#   - no snake_case slug leakage (we keep slugs in metadata only).
+# ---------------------------------------------------------------------------
+
+_V2_NO_HINT_PROMPTS = [
+    "Fix the bug in this AIE source and return the full corrected file.",
+    "Something is wrong with this AIE code. Return a corrected version of the whole file.",
+    "Debug this Versal AIE source. Respond with the complete fixed file.",
+    "This AIE source has a defect. Return the corrected source, in full.",
+    "Find and fix the bug in this AIE file. Output the entire corrected file.",
+    "Repair this AIE kernel/graph and return the full corrected source.",
+    "There's a bug in the code below. Rewrite the file with the bug fixed.",
+    "This Versal AIE code misbehaves. Return a corrected version of the complete source.",
+    "Correct the AIE source below. Return the full fixed file - no commentary.",
+    "This AIE design is broken. Emit the whole corrected source file.",
+    "Patch the AIE source below. Output the full corrected file and nothing else.",
+    "The AIE file below has a defect. Produce the corrected version of the entire file.",
+    "Identify and correct the bug in this AIE source; return the whole fixed file.",
+    "Rewrite this AIE source so it's correct. Return the complete file.",
+    "There is exactly one bug in the AIE source below. Fix it and return the full file.",
+    "This code is supposed to work on Versal AIE but it's broken. Return the corrected file.",
+    "Produce a corrected version of the AIE file below (full source, no explanation).",
+    "Please debug and repair the AIE source below. Return the complete fixed file.",
+]
+
+_V2_SYMPTOM_PROMPTS = [
+    "The AIE design below misbehaves: {symptom}. Return the full corrected source file.",
+    "I'm seeing this on the code below: {symptom}. Fix it and return the complete file.",
+    "This AIE source exhibits the following behavior: {symptom}. Return the corrected file in full.",
+    "Debug this AIE source - symptom: {symptom}. Emit the full fixed file.",
+    "Symptom observed during aiesim/deployment: {symptom}. Fix the source and return the whole file.",
+    "When this runs, {symptom}. Find the cause and return the complete corrected file.",
+    "Observed failure: {symptom}. Correct the AIE source below and return the full file.",
+    "Failure mode: {symptom}. Fix the file and return the complete corrected source.",
+    "This AIE file fails with: {symptom}. Return the whole corrected file.",
+    "Runtime symptom: {symptom}. Debug the source and return the full corrected file.",
+    "Tracing shows {symptom} in the source below. Fix it and return the complete file.",
+]
+
+_V2_MULTI_FILE_NO_HINT = [
+    "Fix the bug in the primary AIE source below. The related file is provided for context. Return the full corrected primary file.",
+    "The primary AIE source is broken; the related file shows the shared contract. Return the complete corrected primary file.",
+    "Debug the primary AIE source using the related file as reference. Emit the full corrected primary file.",
+    "Something is wrong in the primary file below. Use the related file for context. Return the whole fixed primary source.",
+    "Correct the primary AIE file. The related file is provided so you can see the cross-file contract. Return the full fixed primary source.",
+    "There is a cross-file bug involving the primary and the related file below. Return the full corrected primary file.",
+    "The primary AIE source violates a contract that is visible in the related file. Return the complete corrected primary file.",
+    "Read both files below. The bug lives in the primary file. Return the full corrected primary source.",
+    "Repair the primary AIE file. Use the related file only as a reference. Return the whole fixed primary source.",
+    "Rewrite the primary AIE source so it matches the contract implied by the related file. Return the complete primary file.",
+]
+
+_V2_MULTI_FILE_SYMPTOM = [
+    "Cross-file bug; symptom: {symptom}. Return the full corrected primary file (the related file is for context).",
+    "The primary AIE source misbehaves against the related file with symptom: {symptom}. Emit the complete corrected primary file.",
+    "Symptom at integration: {symptom}. Fix the primary file using the related file as reference and return the full primary source.",
+    "Observed: {symptom}. Debug the primary file below (the related file is for context) and return the complete corrected primary source.",
+    "Failure across the two files: {symptom}. Fix the primary file and return it in full.",
+    "Integration failure - {symptom}. Return the full corrected primary AIE file.",
+    "When wired together, these files produce: {symptom}. Fix the primary file and return it in full.",
+    "Runtime issue: {symptom}. Repair the primary AIE file (the related file is for reference) and return the whole file.",
+]
+
+_V2_HUMAN_HINT_PROMPTS = [
+    "My AIE design hangs in aiesim. Fix the file below.",
+    "Output is wrong / truncated / zeros. Fix this AIE source and return the full file.",
+    "aiecompiler reports a problem here. Fix it and return the whole file.",
+    "The kernel compiles but the deployed design misbehaves. Fix the file and return it in full.",
+    "My graph builds but at runtime something is off. Correct the file and return the complete source.",
+    "Something in the AIE source below is broken. Can you rewrite it correctly? Return the whole file.",
+    "This used to work and now it doesn't - the file is below. Return the fixed version.",
+    "Help me debug this AIE file. Return the corrected source (complete file).",
+    "My AIE kernel is producing garbage. Fix it and return the full corrected file.",
+    "The aiesimulator output doesn't match the reference. Fix this AIE file and return it in full.",
+    "Graph routing looks fine but the results are wrong. Correct this AIE source and return the whole file.",
+]
+
+# V2 inspection-negative templates. These legitimately name the bug pattern
+# because the task IS "does this code show <pattern>?" - but the sentence shape
+# varies so inspection-negatives (~41% of the corpus) don't repeat a single frame.
+_V2_INSPECTION_SINGLE_TEMPLATES = [
+    "Does this AIE source exhibit the {label} pattern? Inspect the code and answer yes or no.",
+    "Check the following AIE code for the {label} issue. Is it present?",
+    "I need to know if {label} is occurring in this kernel. Review the code below.",
+    "Pattern check: {label}. Does the kernel below contain this bug?",
+    "Audit this AIE source: does it have a {label} defect?",
+    "True or false - this code has a {label} problem.",
+    "Scan for {label} in the following AIE file and report your finding.",
+    "AIE code review request: is there evidence of {label} here?",
+    "Flag it or clear it: does this kernel show {label}?",
+    "Examine the code below. Report whether {label} is present.",
+    "Is the {label} pattern visible in this AIE source? Yes or no.",
+    "Triage this AIE file for the {label} defect. Is it there?",
+    "Quick lint: does this AIE code show {label}?",
+    "Verify whether {label} applies to the AIE source below.",
+    "Looking specifically for {label} - is it present in the code below?",
+    "Classify this AIE source: is it affected by {label}?",
+]
+
+_V2_INSPECTION_MULTI_TEMPLATES = [
+    "Do the two AIE sources below jointly exhibit the {label} pattern? Inspect both files.",
+    "Cross-file pattern check: {label}. Is it present across the primary and related file below?",
+    "Audit these two AIE files together: do they show a {label} defect?",
+    "Is there evidence of {label} across this primary/related file pair?",
+    "Multi-file triage: does the pair below jointly show the {label} bug?",
+    "Verify whether {label} applies to the combined primary+related AIE sources below.",
+    "Pair inspection for {label} - is it present across the two files?",
+    "Examine both files. Report whether {label} is jointly evident.",
+    "True or false - these two AIE files together exhibit {label}.",
+    "Flag it or clear it: does the pair below show {label}?",
+    "Joint pattern check across the two AIE sources: is {label} present?",
+    "Looking specifically for {label} across the two files below - is it there?",
+]
+
+# Short verdict phrasings for V2 inspection-negatives so the response isn't
+# one frozen sentence repeated 871x per pattern.
+_V2_NEG_VERDICTS_SINGLE = [
+    "No - the {label} pattern is not present in this source.",
+    "Verdict: the {label} pattern is not evident here.",
+    "{label}: not present.",
+    "This source does not exhibit {label}.",
+    "Clear - no {label} defect in this code.",
+    "Answer: {label} is not occurring in this source.",
+    "Not present. The source does not show the {label} pattern.",
+    "False - {label} is not visible in this AIE source.",
+]
+
+_V2_NEG_VERDICTS_MULTI = [
+    "No - the {label} pattern is not jointly evident across these two files.",
+    "Verdict: {label} is not present across the primary and related files.",
+    "{label}: not present across the pair.",
+    "These two files do not jointly exhibit {label}.",
+    "Clear - no joint {label} defect across the pair.",
+    "Answer: {label} is not occurring across the two sources.",
+]
+
+# Tier-aware mix of hint density. Each entry is a list of (pool_name, weight) tuples.
+# Pool names: "none", "symptom", "human".
+_V2_TIER_MIX = {
+    "easy":       [("none", 6), ("human", 3), ("symptom", 1)],
+    "normal":     [("none", 4), ("symptom", 4), ("human", 2)],
+    "medium":     [("none", 4), ("symptom", 4), ("human", 2)],
+    "hard":       [("none", 5), ("symptom", 4), ("human", 1)],
+    "extra_hard": [("none", 6), ("symptom", 3), ("human", 1)],
+    "cross_cutting": [("none", 4), ("symptom", 4), ("human", 2)],
+}
+
+
+def _v2_pick_pool(tier: str, seed_key: str) -> str:
+    mix = _V2_TIER_MIX.get(tier, _V2_TIER_MIX["normal"])
+    total = sum(w for _, w in mix)
+    pick = deterministic_index("pool:" + seed_key, total)
+    acc = 0
+    for name, w in mix:
+        acc += w
+        if pick < acc:
+            return name
+    return mix[-1][0]
+
+
+def build_v2_instruction(seed_key: str, tier: str, symptom: str | None) -> str:
+    """Pick a single-file debug instruction for V2. No bug slug is leaked."""
+    pool = _v2_pick_pool(tier, seed_key)
+    if pool == "symptom" and symptom and symptom != "synthetic mutation":
+        template = _V2_SYMPTOM_PROMPTS[deterministic_index("sym:" + seed_key, len(_V2_SYMPTOM_PROMPTS))]
+        return template.format(symptom=str(symptom).rstrip("."))
+    if pool == "human":
+        return _V2_HUMAN_HINT_PROMPTS[deterministic_index("hum:" + seed_key, len(_V2_HUMAN_HINT_PROMPTS))]
+    return _V2_NO_HINT_PROMPTS[deterministic_index("none:" + seed_key, len(_V2_NO_HINT_PROMPTS))]
+
+
+def build_v2_multi_file_instruction(seed_key: str, tier: str, symptom: str | None) -> str:
+    """Pick a multi-file debug instruction for V2. No bug slug is leaked."""
+    pool = _v2_pick_pool(tier, seed_key)
+    if pool == "symptom" and symptom and symptom != "synthetic mutation":
+        template = _V2_MULTI_FILE_SYMPTOM[deterministic_index("mfsym:" + seed_key, len(_V2_MULTI_FILE_SYMPTOM))]
+        return template.format(symptom=str(symptom).rstrip("."))
+    return _V2_MULTI_FILE_NO_HINT[deterministic_index("mfnone:" + seed_key, len(_V2_MULTI_FILE_NO_HINT))]
+
+
+def build_v2_inspection_instruction(seed_key: str, label: str, multi_file: bool) -> str:
+    """Pick a varied inspection-negative instruction for V2 (keeps the human-readable
+    label, which IS the question, but varies the sentence shape across the 41% of the
+    corpus that is inspection-negatives)."""
+    pool = _V2_INSPECTION_MULTI_TEMPLATES if multi_file else _V2_INSPECTION_SINGLE_TEMPLATES
+    template = pool[deterministic_index("insp:" + ("m:" if multi_file else "s:") + seed_key, len(pool))]
+    return template.format(label=label)
+
+
+def build_v2_inspection_verdict(seed_key: str, label: str, multi_file: bool) -> str:
+    """Pick a varied short verdict for V2 inspection-negative responses."""
+    pool = _V2_NEG_VERDICTS_MULTI if multi_file else _V2_NEG_VERDICTS_SINGLE
+    template = pool[deterministic_index("verd:" + ("m:" if multi_file else "s:") + seed_key, len(pool))]
+    return template.format(label=label)
+
+
+# V2 clean-code distractor prompts: asks the model to judge a correct source and
+# answer affirmatively. Balances the inspection-negative rows (which always say
+# "not present") with legitimate "looks fine" examples so the model doesn't
+# collapse to always-refuse.
+_V2_CLEAN_CODE_PROMPTS = [
+    "Does this AIE source have a bug, or is it correct as written?",
+    "Review this Versal AIE file and tell me whether it is correct or has a defect.",
+    "Is there anything wrong with this AIE source? Give a short verdict.",
+    "Audit this file and state whether it is correct.",
+    "Inspect this AIE source and tell me if it is buggy or clean.",
+    "Please check this file for correctness and report your verdict.",
+    "Is this AIE code correct, or does it contain a bug I should fix?",
+    "Look over this Versal source and give me a pass/fail verdict.",
+    "Is this source implementation correct?",
+    "Evaluate this AIE source for correctness.",
+]
+
+_V2_CLEAN_CODE_VERDICTS = [
+    "Yes - this AIE source looks correct. I do not see a bug.",
+    "Verdict: this file appears correct as written.",
+    "No defect found. The source implementation is correct.",
+    "This AIE source looks clean - no bug to fix.",
+    "Pass. The code is correct.",
+    "I do not see a defect here; the source looks correct.",
+    "Clean - no issue detected in this AIE source.",
+    "Correct. I would ship this as-is.",
+]
+
+
+def build_v2_clean_code_instruction(seed_key: str) -> str:
+    idx = deterministic_index("v2cc:prompt:" + seed_key, len(_V2_CLEAN_CODE_PROMPTS))
+    return _V2_CLEAN_CODE_PROMPTS[idx]
+
+
+def build_v2_clean_code_response(seed_key: str) -> str:
+    idx = deterministic_index("v2cc:verdict:" + seed_key, len(_V2_CLEAN_CODE_VERDICTS))
+    return _V2_CLEAN_CODE_VERDICTS[idx]
+
+
+def build_v2_clean_code_entries(file_infos: list[dict], target_rows: int = 500) -> list[dict]:
+    """Produce clean-code distractor rows: given a known-correct AIE file,
+    ask whether it has a bug and respond 'no, looks fine'. Deterministic
+    selection across the corpus, capped at ~target_rows."""
+    entries: list[dict] = []
+    seen_paths: set[str] = set()
+    candidates = [
+        info for info in file_infos
+        if info.get("context") and len(info.get("context", "")) < 12_000
+        and not info.get("bug_type")  # only known-correct sources
+    ]
+    stride = max(1, len(candidates) // max(1, target_rows))
+    for i, info in enumerate(candidates):
+        if len(entries) >= target_rows:
+            break
+        if i % stride != 0:
+            continue
+        rel_path_raw = info.get("relative_path") or info.get("path") or f"file_{i}"
+        rel_path = str(rel_path_raw)
+        if rel_path in seen_paths:
+            continue
+        seen_paths.add(rel_path)
+        seed_key = f"clean:{rel_path}"
+        instruction = build_v2_clean_code_instruction(seed_key)
+        response = build_v2_clean_code_response(seed_key)
+        context_text = (info.get("context") or "").rstrip() + "\n"
+        entries.append({
+            "instruction": instruction,
+            "context": context_text,
+            "response": response,
+            "metadata": {
+                "variant": "clean_code_distractor",
+                "bug_type": None,
+                "tier": "normal",
+                "source_group": info.get("source_group") or rel_path,
+                "relative_path": rel_path,
+                "split": info.get("split", "train"),
+            },
+        })
+    return entries
+
+
+def crop_context_around_diff(buggy_text: str, correct_text: str, window: int = 20) -> tuple[str, str] | None:
+    """Return cropped (buggy, correct) snippets around the line-diff region.
+
+    Uses longest-common-prefix / longest-common-suffix so that single-edit
+    insertions or deletions (length mismatch) are handled correctly. The
+    returned snippets cover the SAME contextual region in both files, padded
+    by ``window`` lines on each side.
+    """
+    buggy_lines = buggy_text.splitlines()
+    correct_lines = correct_text.splitlines()
+    if not buggy_lines or not correct_lines:
+        return None
+
+    # Longest common prefix.
+    lcp = 0
+    limit = min(len(buggy_lines), len(correct_lines))
+    while lcp < limit and buggy_lines[lcp] == correct_lines[lcp]:
+        lcp += 1
+    # Longest common suffix (not overlapping the prefix).
+    lcs = 0
+    while (
+        lcs < len(buggy_lines) - lcp
+        and lcs < len(correct_lines) - lcp
+        and buggy_lines[-1 - lcs] == correct_lines[-1 - lcs]
+    ):
+        lcs += 1
+
+    # Diff region (half-open):
+    #   buggy:   [lcp, len(buggy_lines) - lcs)
+    #   correct: [lcp, len(correct_lines) - lcs)
+    if lcp == len(buggy_lines) == len(correct_lines):
+        # Files are identical - nothing to crop around.
+        return None
+
+    b_diff_start = lcp
+    b_diff_end = len(buggy_lines) - lcs  # exclusive
+    c_diff_start = lcp
+    c_diff_end = len(correct_lines) - lcs
+
+    lo = max(0, lcp - window)
+    hi_b = min(len(buggy_lines), b_diff_end + window)
+    hi_c = min(len(correct_lines), c_diff_end + window)
+    buggy_snip = "\n".join(buggy_lines[lo:hi_b])
+    correct_snip = "\n".join(correct_lines[lo:hi_c])
+    if not buggy_snip.strip() or not correct_snip.strip():
+        return None
+    # Accept the crop if it is an ABSOLUTE size win (<4000 chars) OR a clear
+    # RELATIVE win over the original (<75% of buggy_text size). This lets us
+    # crop large multi-line-span mutations while still avoiding no-op crops.
+    if len(buggy_snip) >= 4000 and len(buggy_snip) >= 0.75 * len(buggy_text):
+        return None
+    return buggy_snip, correct_snip
+
+
+# Prompt variants for the cropped-snippet variant so many rows don't share
+# one frozen instruction.
+_V2_CROP_PROMPTS = [
+    "Here is a short snippet extracted from an AIE source around a suspected defect. Return the corrected snippet (same line range).",
+    "Below is the region of an AIE file that contains a bug. Fix it and return the corrected excerpt.",
+    "This is an excerpt from an AIE source; a defect lives inside this region. Return the fixed snippet.",
+    "Patch this AIE code excerpt. Return the corrected version of the same region.",
+    "Small excerpt from a buggy AIE file. Output the fixed snippet covering the same lines.",
+    "The following AIE code region contains a defect. Return the corrected excerpt.",
+    "Here is an AIE snippet around a bug. Please return the fixed version of this region.",
+    "I pulled out the lines around a bug in my AIE source. Give me back the fixed excerpt.",
+    "Excerpt of AIE code with a bug somewhere inside. Return just the fixed excerpt.",
+    "Fix the bug in this AIE code excerpt and return the corrected snippet.",
+]
+
+
+def build_v2_cropped_variants(bug_rows: list[dict], max_variants: int = 800) -> list[dict]:
+    """Companion rows whose context+response are cropped to the defect's neighborhood."""
+    produced: list[dict] = []
+    for row in bug_rows:
+        if len(produced) >= max_variants:
+            break
+        meta = row.get("metadata", {}) or {}
+        variant = meta.get("variant")
+        if variant not in {"bug_fix_pair", "taxonomy_debug_scenario", "multi_file_bug_fix_pair"}:
+            continue
+        buggy = row.get("context", "") or ""
+        correct_fenced = row.get("response", "") or ""
+        m = re.match(r"^```[a-zA-Z0-9]*\n(.*?)\n```\s*$", correct_fenced, flags=re.DOTALL)
+        if not m:
+            continue
+        correct = m.group(1)
+        # V2 bug-fix contexts contain 'Buggy version:\n<buggy>\nCorrect version:\n<correct>'.
+        # Extract the buggy half for line-diff alignment.
+        buggy_clean = buggy
+        start_marker = "Buggy version:\n"
+        if buggy_clean.startswith(start_marker):
+            buggy_clean = buggy_clean[len(start_marker):]
+        end_marker = "\nCorrect version:"
+        if end_marker in buggy_clean:
+            buggy_clean = buggy_clean.split(end_marker, 1)[0]
+        cropped = crop_context_around_diff(buggy_clean, correct, window=15)
+        if cropped is None:
+            continue
+        buggy_snip, correct_snip = cropped
+        rel_path = str(meta.get("relative_path") or "file")
+        lang = _v2_lang_for_path(rel_path)
+        new_meta = dict(meta)
+        new_meta["variant"] = f"{variant}_cropped"
+        new_meta["cropped_window"] = 15
+        seed_key = f"crop:{rel_path}:{meta.get('bug_type','')}:{len(produced)}"
+        prompt_idx = deterministic_index(seed_key, len(_V2_CROP_PROMPTS))
+        produced.append({
+            "instruction": _V2_CROP_PROMPTS[prompt_idx],
+            "context": buggy_snip,
+            "response": f"```{lang}\n{correct_snip}\n```",
+            "metadata": new_meta,
+        })
+    return produced
+
+
+# Realistic error-message fragments keyed by a substring of the bug_type slug.
+# These are the kinds of strings real users paste from aiecompiler / chess /
+# aiesimulator / x86sim output, rather than prose narration.
+_V2_ERROR_TEMPLATES: list[tuple[str, list[str]]] = [
+    ("off_by_one", [
+        "aiesimulator: segfault in kernel; likely OOB buffer read near end of window.",
+        "ERROR: window read index exceeds configured window size by 1 sample.",
+        "Runtime trap: out-of-bounds access on input window.",
+    ]),
+    ("oob", [
+        "ERROR: port index out of range in connect(); kernel only declares 2 inputs.",
+        "aiecompiler: error: buffer access outside declared bounds.",
+    ]),
+    ("deadlock", [
+        "aiesimulator hang detected; no kernel made progress for 1e6 cycles.",
+        "WARNING: producer-consumer stream stall; graph failed to terminate.",
+        "chess: stream backpressure deadlock suspected (unbalanced reads/writes).",
+    ]),
+    ("plio", [
+        "aiecompiler: error: PLIO width mismatch between graph declaration and kernel port.",
+        "ERROR: plio_32_bits interface connected to a 16-bit kernel port.",
+    ]),
+    ("runtime_ratio", [
+        "aiecompiler: error: runtime<ratio> must be > 0.",
+        "aiecompiler: error: sum of runtime<ratio> for kernels on the same tile exceeds 1.0.",
+    ]),
+    ("missing_connection", [
+        "aiecompiler: error: kernel port declared but not connected in graph constructor.",
+        "ERROR: unconnected port on kernel instance.",
+    ]),
+    ("self_loop", [
+        "aiecompiler: error: connect forms a self-loop without an intermediate buffer.",
+    ]),
+    ("missing_graph_wait", [
+        "Host test fails: output buffer still zero when checked; likely missing graph wait.",
+    ]),
+    ("missing_adf_source", [
+        "aiecompiler: error: kernel has no adf::source(k) assignment; cannot locate kernel body.",
+    ]),
+    ("window_margin", [
+        "aiecompiler: error: window margin larger than window size is invalid.",
+    ]),
+    ("pipelining", [
+        "chess: warning: loop could not be pipelined; 3x throughput loss.",
+        "chess: break statement prevents software pipelining of this loop.",
+    ]),
+    ("to_vector_shift", [
+        "Output values off by 2^15; to_vector shift parameter looks wrong.",
+    ]),
+    ("acc48", [
+        "chess: accumulator overflow detected; consider acc80 for int32xint32.",
+    ]),
+    ("signed_unsigned", [
+        "Sign-extension artifacts at the MSB boundary of output samples.",
+    ]),
+    ("unaligned", [
+        "chess: warning: pointer not aligned to 128-bit boundary for vector load.",
+    ]),
+    ("modulo", [
+        "chess: software pipelining suboptimal; modulo inside loop - use chess_circular_buffer.",
+    ]),
+    ("bfloat16", [
+        "aiecompiler: error: bfloat16 is only supported on AIE-ML, not AIE1.",
+    ]),
+    ("begin_vector", [
+        "aiecompiler: error: begin_vector width must be a power of 2.",
+    ]),
+    ("broadcast", [
+        "aiecompiler: error: broadcast width does not match destination vector width.",
+    ]),
+    ("stream_drops", [
+        "Unit test fails: last sample of each output block is missing.",
+    ]),
+    ("signed", [
+        "uint16 data is being sign-extended as int16 producing wrong values.",
+    ]),
+    ("accumulator_reset", [
+        "Output has a DC offset that accumulates across calls; accumulator not cleared.",
+    ]),
+    ("wrong_loop_count", [
+        "Output length is half of expected; loop bound looks wrong.",
+    ]),
+    ("missing_output_write", [
+        "Host test fails: output stream is empty; kernel never writes output.",
+    ]),
+    ("subtraction_instead_of_addition", [
+        "Unit test fails: outputs are the negation of expected.",
+    ]),
+    ("aie_add_used_instead_of_aie_mul", [
+        "Outputs look like sums rather than products; aie::add used where aie::mul was intended.",
+    ]),
+]
+
+_V2_ERROR_WRAPPERS = [
+    "I'm seeing this error when I build:\n\n  {error}\n\nCan you fix the source?",
+    "Build fails with:\n  {error}\nReturn the corrected file.",
+    "aiecompiler output:\n  {error}\nFix the AIE source below.",
+    "Got this runtime message:\n  {error}\nPlease fix the code.",
+    "{error}\n\nPlease return the fixed file.",
+    "My design fails with:\n  {error}\nPatch the source and return the corrected file.",
+    "The toolchain reports:\n  {error}\nFix the AIE code.",
+    "I get:\n  {error}\nCan you correct the source?",
+]
+
+
+def _match_error_templates(bug_slug: str) -> list[str]:
+    slug_lower = (bug_slug or "").lower()
+    matched: list[str] = []
+    for key, templates in _V2_ERROR_TEMPLATES:
+        if key in slug_lower:
+            matched.extend(templates)
+    return matched
+
+
+def build_v2_compiler_error_rows(bug_rows: list[dict], max_rows: int = 800) -> list[dict]:
+    """Produce rows where the instruction leads with a realistic compiler /
+    runtime error fragment rather than a prose symptom. These teach the model
+    to recognize concrete error strings and map them to a fix."""
+    produced: list[dict] = []
+    for row in bug_rows:
+        if len(produced) >= max_rows:
+            break
+        meta = row.get("metadata", {}) or {}
+        variant = meta.get("variant")
+        if variant not in {"bug_fix_pair", "taxonomy_debug_scenario"}:
+            continue
+        bug_slug = str(meta.get("bug_type") or "")
+        templates = _match_error_templates(bug_slug)
+        if not templates:
+            continue
+        response = row.get("response", "") or ""
+        if not response.startswith("```"):
+            continue
+        context = row.get("context", "") or ""
+        # Strip existing V2 'Buggy version:' / 'Correct version:' framing and
+        # present only the buggy source, since the error itself supplies the
+        # symptom.
+        if context.startswith("Buggy version:\n"):
+            context = context[len("Buggy version:\n"):]
+        if "\nCorrect version:" in context:
+            context = context.split("\nCorrect version:", 1)[0]
+        rel_path = str(meta.get("relative_path") or "file")
+        seed_key = f"err:{rel_path}:{bug_slug}:{len(produced)}"
+        err = templates[deterministic_index(seed_key + ":t", len(templates))]
+        wrapper = _V2_ERROR_WRAPPERS[deterministic_index(seed_key + ":w", len(_V2_ERROR_WRAPPERS))]
+        instruction = wrapper.format(error=err)
+        new_meta = dict(meta)
+        new_meta["variant"] = f"{variant}_compiler_error"
+        new_meta["error_prompt"] = True
+        produced.append({
+            "instruction": instruction,
+            "context": context,
+            "response": response,
+            "metadata": new_meta,
+        })
+    return produced
+
+
+def cap_negative_ratio(rows: list[dict], max_ratio: float = 0.18) -> list[dict]:
+    """V2: cap taxonomy_*_inspection_negative rows at max_ratio of the corpus."""
+    def _is_neg(r: dict) -> bool:
+        return str(r.get("metadata", {}).get("variant", "")).endswith("inspection_negative")
+
+    negatives = [r for r in rows if _is_neg(r)]
+    positives = [r for r in rows if not _is_neg(r)]
+    if not negatives or not positives:
+        return rows
+    allowed = int(len(positives) * max_ratio / max(1e-6, (1.0 - max_ratio)))
+    if len(negatives) <= allowed:
+        return rows
+    negatives_sorted = sorted(negatives, key=lambda r: (
+        str(r.get("metadata", {}).get("variant", "")),
+        str(r.get("metadata", {}).get("bug_type", "")),
+        str(r.get("metadata", {}).get("relative_path", "")),
+        str(r.get("instruction", ""))[:80],
+    ))
+    stride = max(1, len(negatives_sorted) // max(1, allowed))
+    kept = [negatives_sorted[i] for i in range(0, len(negatives_sorted), stride)][:allowed]
+    return positives + kept
+
+
+def dedup_near_identical_responses(rows: list[dict], max_per_response_key: int = 40, short_threshold: int = 500) -> list[dict]:
+    """V2: drop near-identical SHORT response duplicates (templated verdicts).
+
+    Full-file code responses are left alone - a single correct file is legitimately
+    the target for many different mutations of itself. We only cap repetition on
+    short outputs (inspection-negative verdicts, clean-code verdicts) where the
+    same phrasing would otherwise appear hundreds of times."""
+    kept: list[dict] = []
+    counts: dict[str, int] = {}
+    for row in rows:
+        out = (row.get("response") or row.get("output") or "")
+        if len(out) > short_threshold:
+            kept.append(row)
+            continue
+        key = re.sub(r"\s+", " ", out).strip()[:400]
+        c = counts.get(key, 0)
+        if c >= max_per_response_key:
+            continue
+        counts[key] = c + 1
+        kept.append(row)
+    return kept
+
+
+def _row_group_id(row: dict) -> str:
+    """Stable per-source-file identifier for group-aware splitting."""
+    meta = row.get("metadata", {}) or {}
+    repo = str(meta.get("source_repo") or "local")
+    src = str(meta.get("source_path") or meta.get("relative_path") or meta.get("source") or "")
+    norm = src.replace("\\", "/").lower()
+    norm = re.sub(r"_correct(?=\.)", "", norm)
+    norm = re.sub(r"_buggy[^/.]*(?=\.)", "", norm)
+    return f"{repo}:{norm}"
+
+
+def stamp_group_ids(rows: list[dict]) -> list[dict]:
+    """Attach a stable group_id to each row so downstream trainers can
+    perform group-aware splits (no source file in both train and eval)."""
+    for row in rows:
+        meta = row.setdefault("metadata", {})
+        meta["group_id"] = _row_group_id(row)
+    return rows
+
+
+def build_v2_general_code_mixin(v1_all_path: Path, target_rows: int = 300) -> list[dict]:
+    """V2: 3-5% mix-in of v1 general-AIE explanation rows to preserve the
+    model's ability to reason about AIE code beyond pure bug-fix responses.
+
+    Only pulls v1 rows whose split == "train" (v1 already uses group-aware
+    splitting), so none of these sources leak into the V2 held-out set.
+    Variants preserved: causal_debugging, structured_extraction, deep_explanation."""
+    if not v1_all_path.exists():
+        return []
+    allowed_variants = {"causal_debugging", "structured_extraction", "deep_explanation"}
+    candidates: list[dict] = []
+    with v1_all_path.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            meta = row.get("metadata", {}) or {}
+            if meta.get("split") != "train":
+                continue
+            if meta.get("variant") not in allowed_variants:
+                continue
+            if not (row.get("instruction") and row.get("response")):
+                continue
+            candidates.append(row)
+    if not candidates:
+        return []
+    # Deterministic stride sample, balanced across variants.
+    candidates.sort(key=lambda r: (r["metadata"].get("variant", ""), _row_group_id(r)))
+    per_variant = max(1, target_rows // len(allowed_variants))
+    buckets: dict[str, list[dict]] = {v: [] for v in allowed_variants}
+    for row in candidates:
+        v = row["metadata"].get("variant", "")
+        if v in buckets and len(buckets[v]) < per_variant * 3:
+            buckets[v].append(row)
+    out: list[dict] = []
+    for v, bucket in buckets.items():
+        if not bucket:
+            continue
+        stride = max(1, len(bucket) // per_variant)
+        out.extend(bucket[::stride][:per_variant])
+    # Normalize metadata: tag as mix-in, force split=train, preserve group_id.
+    normalized: list[dict] = []
+    for row in out:
+        meta = dict(row.get("metadata", {}) or {})
+        original_variant = meta.get("variant") or "general"
+        meta["variant"] = f"v1_mixin_{original_variant}"
+        meta["split"] = "train"
+        meta["mixin"] = True
+        meta["group_id"] = _row_group_id({"metadata": meta})
+        normalized.append({
+            "instruction": row["instruction"],
+            "context": row.get("context", ""),
+            "response": row["response"],
+            "metadata": meta,
+        })
+        if len(normalized) >= target_rows:
+            break
+    return normalized
+
+
 DEFAULT_EXPANDED_SOURCE_JSONL = ROOT / "data" / "raw" / "aie_expanded_sources.jsonl"
 SUPPORTED_SUFFIXES = {".cc", ".cpp", ".h", ".hpp"}
 
@@ -167,31 +895,69 @@ MULTI_FILE_RELATED_VARIANTS_PER_RECORD = 4
 
 BUG_TAXONOMY = {
     "easy": [
-        "Wrong gain value (7 instead of 3)",
-        "Wrong loop count (16 instead of 32)",
-        "Subtraction instead of addition",
-        "Missing output iterator increment (no ++)",
-        "Reading from wrong stream variable (in_a twice instead of in_a then in_b)",
-        "Missing adf::source() assignment",
-        "Output iterator vector width does not match input (16 vs 8)",
-        "acc48 instead of acc80 for int32xint32",
+        "Wrong numeric constant used as gain or scale factor",
+        "Wrong loop iteration count - off by factor of 2 or more",
+        "Wrong arithmetic operator - subtraction instead of addition or vice versa",
+        "Missing output iterator increment - iterator never advances",
+        "Reading from wrong stream variable - same stream read twice instead of two distinct streams",
+        "Missing adf::source() assignment in graph",
+        "Output iterator vector width does not match input iterator width",
+        "Wrong accumulator type for data width - acc48 used where acc80 is required",
         "Missing writeincr() call - output stream never written",
-        "Wrong PLIO bit width (plio_32_bits for int16 data)",
-        "Runtime ratio set to 0.0",
-        "to_vector output type does not match buffer type (int32 vs int16)",
-        "to_vector shift parameter is 15 instead of 0",
-        "Accumulator initialized with aie::mul(garbage) instead of aie::zeros",
-        "Data read once outside loop instead of inside (stale data)",
-        "Missing output write entirely - result computed but never stored",
-        "Broadcast width does not match vector width (broadcast<int16, 4> with vector<int16, 8>)",
-        "Window size uses wrong literal (128 instead of 256)",
-        "adf::connect direction reversed (output port connected to output port)",
-        "Cascade chain type mismatch (stage1 outputs int16, stage2 expects int32)",
-        "Wrong multiplication factor in MAC chain",
-        "begin_vector<4> instead of begin_vector<8> on one iterator",
-        "readincr from output stream instead of input stream",
-        "Missing adf::runtime line entirely",
-        "aie::add used instead of aie::mul",
+        "Wrong PLIO bit width for data type",
+        "Runtime ratio set to zero - kernel never executes",
+        "to_vector output type does not match buffer element type",
+        "Wrong shift amount in srs() - value saturates or loses all precision",
+        "Accumulator not initialized with aie::zeros before use",
+        "Data read once outside loop instead of once per iteration - stale data reused",
+        "Result computed but never written to output - missing store or writeincr",
+        "aie::broadcast width does not match target vector width",
+        "Window size uses wrong literal - off by factor of 2",
+        "adf::connect direction reversed - output port connected to output port",
+        "Cascade chain type mismatch between producer and consumer",
+        "Wrong constant used as multiplication factor in MAC chain",
+        "begin_vector width mismatch - wrong template parameter on one iterator",
+        "readincr called on output stream instead of input stream",
+        "Missing adf::runtime<ratio>() call entirely",
+        "aie::add used where aie::mul was needed",
+        "Input iterator incremented twice per loop iteration - skips every other sample",
+        "Output always written to index 0 instead of advancing with iterator",
+        "Wrong accumulator lane count - half the output lanes never computed",
+        "Wrong shift direction in srs - shift goes the wrong way",
+        "Graph kernel port declared as input but connected as output",
+        "readincr vector width larger than stream provides - overreads stream",
+        "Coefficient array uses wrong element type causing silent truncation",
+        "Coefficient array not marked static - reloaded from memory every invocation",
+        "Loop upper bound uses wrong type causing overflow on large inputs",
+        "Uninitialized scalar broadcast as zero into all vector lanes",
+        "writeincr called where readincr was needed - reads and writes swapped",
+        "Output buffer pointer advanced by 1 instead of vector width each iteration",
+        "Loop bound off by one - uses N-1 instead of N or < instead of <=",
+        "Vector insert/extract index out of range for the vector size",
+        "shuffle_up or shuffle_down shift amount wrong for the element size",
+        "Vector concat operand order reversed - low and high halves swapped",
+        "aie::store_v width does not match source vector width",
+        "Multiply-subtract used where multiply-accumulate was needed",
+        "fpmac vs fpmsc confusion in floating point MAC chain",
+        "Negated operand in MAC chain producing inverted output",
+        "Wrong operand order in asymmetric operation (subtract, divide, shift)",
+        "Missing SRS before output - raw accumulator bits stored to vector buffer",
+        "Self-loop adf::connect - kernel output connected back to its own input",
+        "Port index out of bounds in adf::connect (in[2] when kernel has only 2 inputs)",
+        "kernel::create references a function name that does not exist in any source file",
+        "adf::source() path points to a .cpp file that does not contain the kernel",
+        "Connect type mismatch - window connect attached to stream port",
+        "Implicit type narrowing without explicit shift losing precision",
+        "Complex to real conversion losing imaginary component unintentionally",
+        "Float to fixed conversion using wrong scale factor",
+        "bfloat16 conversion used on AIE1 target which does not support it",
+        "alignas value too small for vector access (alignas(8) for 32-byte vector load)",
+        "REGISTER_FUNCTION macro points to wrong member function name",
+        "Inverted comparison in threshold/clip kernel - greater-than swapped with less-than",
+        "Off-by-one in coefficient indexing - first or last tap missed",
+        "Vector load/store stride wrong - reads every other element instead of contiguous",
+        "Wrong sign on initial accumulator load (negative zero vs positive zero)",
+        "Missing parentheses around macro argument causing wrong operator precedence",
     ],
     "normal": [
         "Stream deadlock - one input stream never consumed in a dual-stream kernel",
@@ -293,6 +1059,78 @@ BUG_TAXONOMY = {
         "PLIO data file format does not match bit width - hex values are 32-bit but PLIO is 16-bit",
         "Input PLIO file has fewer samples than kernel expects - simulation hangs waiting for data",
         "PLIO name collision - two PLIOs with same string name",
+        # new normal entries
+        "Coefficient array declared as local instead of static - re-initialized on every kernel call",
+        "Two RTP parameters swapped in graph connect - gain applied as offset and offset applied as gain",
+        "Output buffer size in graph is correct but kernel writes samples+1 due to loop fence post error",
+        "Input stream consumed at half rate - readincr_v16 used but only 8 lanes processed",
+        "Kernel uses int32 vector but graph allocates int16 buffer - every other element is garbage",
+        "aie::mac accumulates into wrong lane group - result shifted by 8 lanes",
+        "Kernel uses post-increment on iterator but loop condition checks pre-incremented value",
+        "Missing restrict qualifier on output buffer causes compiler to assume aliasing and serializes stores",
+        "Cascade output written unconditionally in first iteration only - remaining iterations silently skipped",
+        "Wrong conditional branch taken for negative inputs - abs() not applied before threshold compare",
+        "Graph has two kernels but only one is added via content() - second kernel never scheduled",
+        "Symmetric FIR uses wrong half-length for coefficient loop - processes all N taps twice",
+        "RTP read placed before graph.run() in host code - value not yet propagated to kernel",
+        "Stream/cascade port declared in kernel signature but never consumed - causes deadlock",
+        "chess_loop_range hint contradicts actual loop bound - software pipelining disabled",
+        "Stream producer sends different sample count than consumer expects per invocation",
+        "Accumulator not reset between kernel invocations - state leaks across frames",
+        "Wrong accumulator type for complex vs real data (acc48 used where cacc48 needed)",
+        "Mixed accumulator types in same kernel causing silent precision loss at conversion",
+        "begin_restrict_vector used where begin_vector was needed (or vice versa)",
+        "Iterator advanced in wrong loop scope - inner loop instead of outer",
+        "chess_unroll_loop applied to a loop that should not be unrolled - code bloat exceeds program memory",
+        "Data-dependent loop count that can evaluate to zero - skip-frame causes downstream deadlock",
+        "Cascade output written with wrong accumulator type - downstream stage reinterprets bits",
+        "Stream read inside conditional branch not always executed - asymmetric token consumption",
+        "Pointer arithmetic overflow for large buffer sizes - 32-bit pointer wraps past 4GB",
+        "__restrict qualifier asserted on buffers that actually alias - silent miscompile",
+        "chess_storage register assignment conflicts between two variables sharing same register",
+        "volatile qualifier missing on shared memory buffer - reads cached stale value",
+        "inline attribute on function too large - exceeds instruction memory budget",
+        "Graph edge creates feedback cycle scheduler cannot resolve",
+        "Window size correct for input type but wrong for output type after conversion",
+        "Window margin size wrong for filter length - last samples computed with garbage",
+        "Window size not aligned to vector byte boundary causing bus error",
+        "Shared buffer dimensions disagree between producer and consumer kernels",
+        "GMIO burst length does not align with kernel buffer size - partial transfers",
+        "GMIO bandwidth insufficient for kernel consumption rate - backpressure stalls",
+        "Mixed PLIO widths in same design causing PL routing congestion",
+        "Runtime ratio set to value greater than 1.0 - schedule infeasible",
+        "Runtime ratios across cascade chain do not sum to a consistent rate",
+        "RTP connected as sync but kernel reads as async (or vice versa)",
+        "RTP read inside inner loop instead of outside - performance collapse from per-iter sync",
+        "RTP read outside all loops - value never refreshed during execution",
+        "adf::connect for RTP has wrong argument order - source and sink swapped",
+        "RTP array size does not match kernel's expected parameter size",
+        "Multiple RTP updates between graph.run() calls but kernel only reads parameter once",
+        "location<kernel> constraint conflicts with required cascade adjacency",
+        "location<buffer> assigns two buffers to the same memory bank",
+        "Cascade chain length does not match TP_CASC_LEN template parameter",
+        "Middle kernel in cascade does not forward partial results - chain broken silently",
+        "Last kernel in cascade does not convert from cascade format to output format",
+        "First kernel in cascade initializes accumulator wrong for cascade protocol",
+        "Cascade and stream connections mixed incorrectly on same kernel port",
+        "Header file declares different function signature than implementation provides",
+        "Graph includes wrong header file for kernel function declaration",
+        "Kernel compiled with different preprocessor defines than graph expects",
+        "Two source files define a kernel function with the same name causing link error",
+        "Graph references a kernel function name that does not exist in any source file",
+        "Three-stage pipeline middle stage changes data format unexpectedly",
+        "Pipeline with feedback loop the scheduler cannot resolve",
+        "Pipeline stages with incompatible vector widths at the connection boundary",
+        "Interpolation factor in kernel does not match graph output window size expectation",
+        "Decimation factor in kernel does not match graph input/output rate ratio",
+        "Multi-rate graph configuration creates scheduling deadlock",
+        "SSR super sample rate configuration mismatch between graph and kernel",
+        "Throughput bottleneck from one slow kernel in otherwise balanced pipeline",
+        "DMA transfer size does not match kernel buffer size",
+        "Missing DMA synchronization - kernel reads buffer before DMA completes write",
+        "DMA burst length not aligned to memory interface width",
+        "External memory base address not aligned to DMA requirement",
+        "Shim DMA configuration does not match graph PLIO/GMIO setup",
     ],
     "medium": [
         "Two-stage pipeline compiles but stage2 output is corrupted - stage1 outputs int16, stage2 reads int32",
@@ -315,6 +1153,31 @@ BUG_TAXONOMY = {
         "Interpolating filter produces twice as many samples as expected - output loop count is 2x input",
         "Decimating filter drops every other output - output iterator advanced twice per iteration",
         "Graph with RTP where parameter value is always initial - RTP read is outside processing loop",
+        # new medium entries
+        "Polyphase filter bank computes first phase correctly but remaining phases reuse first phase twiddles",
+        "Sliding window kernel advances input pointer by window_size instead of hop_size - windows overlap incorrectly",
+        "Kernel produces correct single-precision output but graph expects bfloat16 - silent precision loss on AIE-ML",
+        "Upsampling kernel inserts zeros correctly but output rate declared as 1x instead of Nx in graph",
+        "IIR feedback kernel reads previous output from wrong buffer index - DC drift builds up across frames",
+        "Matrix multiplication result is transposed - row and column loop indices are swapped",
+        "Vectorised absolute value uses aie::abs on signed vector but input has unsigned type - all values unchanged",
+        "Kernel correct for even-length inputs but produces one extra output for odd lengths due to ceiling division",
+        "Scale factor applied twice - once in kernel MAC shift and once in graph RTP gain",
+        "Stream-based FIR uses circular coefficient buffer but wrap index is never updated across invocations",
+        "Accumulator precision sufficient for one MAC but wrong for full chain length under worst-case input",
+        "Graph deadlocks at specific time - one port in multi-port kernel never serviced",
+        "Filter correct for small values but overflows silently for full-range inputs",
+        "Result computed correctly but never reaches output - intermediate write dropped by optimizer",
+        "Twiddle factor or coefficient index calculation wrong causing frequency-domain errors",
+        "Async buffer kernel stalls or corrupts due to acquire/release protocol error",
+        "Two kernels correct independently but cascaded produce wrong result - format mismatch at boundary",
+        "Saturation mode wrong on type conversion - wrap vs saturate behavior swapped",
+        "Lock acquire pattern allows two kernels to deadlock by acquiring same locks in different order",
+        "FFT bit-reversal output ordering applied at wrong stage of pipeline",
+        "Multi-tile correlation produces correct peak but wrong sidelobe pattern from window indexing error",
+        "Window size kernel reads is correct in samples but graph allocates in bytes (or vice versa)",
+        "Conditional kernel branch consumes one stream in one path and a different stream in the other",
+        "Floating-point reduction order changes result across vector widths - non-associativity",
     ],
     "hard": [
         "Kernel exceeds tile data memory (32KB) due to local coefficient array plus double-buffered IO",
@@ -337,6 +1200,36 @@ BUG_TAXONOMY = {
         "Kernel reads coefficient RTP once at startup and never refreshes it",
         "Packet-switched stream routes to wrong kernel due to header ID mismatch",
         "Kernel works in x86 sim but fails in aiesimulator due to alignment assumptions",
+        # new hard entries
+        "Lock acquire/release ordering inverted between producer and consumer kernels - deadlocks after first frame",
+        "Kernel local array larger than available scratchpad - overflows into adjacent kernel stack silently",
+        "Multi-rate graph where fast kernel runs 4x but buffer is sized for 1x - fourth invocation corrupts memory",
+        "Cascade tile pair passes unit test but fails at system level because cascade direction is reversed in graph",
+        "Chess compiler unrolls inner loop and reuses register causing read-after-write hazard - wrong output every 4th element",
+        "Buffer ping-pong period is 1 graph iteration but kernel needs 2 iterations to produce valid output - stale buffer read",
+        "Stream synchronization word (tlast) consumed by wrong kernel in multi-kernel pipeline - frame alignment lost",
+        "Float32 kernel accumulates NaN due to uninitialized local float variable used as initial accumulator value",
+        "Kernel with two input streams reads them in fixed order but graph scheduler delivers them in opposite order",
+        "Dead kernel branch prevents compiler from optimizing live branch - throughput 3x below budget",
+        "Works for even buffer sizes but fails for odd - half-vector tail handling missing",
+        "Works for power-of-two vector widths but fails for non-power-of-two",
+        "Works for real data types but fails for complex - complex accumulator path not exercised",
+        "Works for signed types but fails for unsigned - sign-extension assumptions wrong",
+        "Works in functional simulation but fails in cycle-accurate simulation - timing assumption invalid",
+        "Works in aiesim but fails on hardware - DMA descriptor timing assumption invalid on real silicon",
+        "Works for first N frames then fails due to slow state accumulation in hidden variable",
+        "Code looks correct but compiler optimizes away a necessary side-effecting operation",
+        "Code violates an undocumented AIE API constraint that only manifests at scheduling time",
+        "Matrix kernel correct for row-major data but wrong when fed column-major",
+        "Two code paths that should be equivalent differ due to floating-point non-associativity",
+        "Output is all zeros at runtime despite clean compile - intermediate store dropped due to dead-store elimination",
+        "Output samples in wrong order due to lane permutation between two pipeline stages",
+        "Compilation succeeds but linking fails - kernel symbol missing from any source file",
+        "Mapping succeeds but routing fails - tile-to-tile path is congested by unrelated traffic",
+        "Design works in x86sim but fails in aiesim - register-bank assumptions invalid in cycle-accurate model",
+        "Memory bank conflict only manifests when two specific kernels happen to be co-located",
+        "Race condition on shared coefficient table only triggers under specific multi-rate schedule",
+        "Kernel correct standalone but graph throughput collapses due to PLIO clock domain crossing jitter",
     ],
     "extra_hard": [
         "Removing one unrelated kernel fixes others due to circular dependency in buffer allocation pressure",
@@ -370,6 +1263,38 @@ BUG_TAXONOMY = {
         "Clock gating on idle tiles perturbs adjacent tile memory timing",
         "Recursive kernel function exceeds tile stack for large inputs",
         "Cross-graph physical routing congestion under inter-graph PLIO traffic",
+        # new extra_hard entries
+        "Kernel correctness depends on compiler not reordering two adjacent stores - breaks at -O2 without volatile",
+        "Graph topology valid but AIE router cannot satisfy both cascade and stream constraints simultaneously",
+        "DMA burst length exceeds FIFO depth between PL and AIE - sporadic data loss under sustained load",
+        "Two subgraphs share a PLIO clock domain but run at different graph rates - phase drift causes misalignment",
+        "Kernel uses tile-local timer for profiling but timer wraps mid-frame - negative latency measurement causes assert",
+        "Coefficient update via RTP races with kernel mid-computation - output corrupted for one frame per update",
+        "Graph compiled with -profile flag adds extra stream reads that change token counts and deadlock production build",
+        "Heterogeneous graph mixes AIE and HLS kernels with incompatible FIFO depths - backpressure deadlock at boundary",
+        "Feature used that only exists on AIE-ML (bfloat16, acc64) silently breaks on AIE1",
+        "Memory size assumption wrong - 32KB tile assumed but target is 64KB AIE-ML (or vice versa)",
+        "Stream count per tile assumption wrong between architectures - too many streams routed",
+        "Cascade interface width differs between architectures causing silent reinterpret",
+        "Kernel meets timing at base frequency but fails at boosted frequency target",
+        "Cascade path too long across array causing timing closure failure",
+        "VLIW slot conflict - two memory operations from same bank scheduled in same cycle",
+        "Software pipelining fails due to loop-carried dependency that compiler cannot break",
+        "Throughput limited by memory bandwidth not compute - kernel cannot saturate MAC units",
+        "Code compiles and runs but produces subtly wrong results due to integer type promotion rules",
+        "Endianness assumption wrong - kernel reads bytes in opposite order from PL producer",
+        "Insufficient memory at mapping time - aggregate tile budget exceeded across all kernels",
+        "Cannot place kernel at mapping time - location constraints over-specified leaving no valid tile",
+        "Routing congestion at routing time - too many stream crossings through one shim row",
+        "Timing closure failure at implementation time - long combinational path through shim",
+        "DMA error at runtime - descriptor chain underflows when consumer is faster than producer",
+        "Lock timeout at runtime - producer kernel never released lock due to early return",
+        "Bus error at runtime on hardware - unaligned vector access trap not seen in simulation",
+        "Stack overflow at runtime - deep call chain triggered only by specific input pattern",
+        "PLIO/GMIO clock rate mismatch with kernel processing rate - sporadic data corruption",
+        "Bug only manifests when -profile flag adds trace stream that consumes one of the kernel's stream slots",
+        "Bug only manifests at -O2 because -O0 inserts debug spills that hide an aliasing assumption",
+        "Multi-graph design where one graph's idle DMA bursts perturb another graph's kernel cache lines",
     ],
     "cross_cutting": [
         "Window size confusion: samples vs bytes",
@@ -998,6 +1923,10 @@ def build_entry_variant(info: dict, instruction: str, response: str, variant: st
 
 
 def build_entries_for_info(info: dict) -> list[dict]:
+    if V2_MODE:
+        # V2 is a debug-only dataset: drop structured_extraction / deep_explanation / causal_debugging
+        # prose variants so the model is trained purely on "buggy source -> full corrected source".
+        return []
     entries = [
         build_entry_variant(info, build_feature_instruction(info), build_feature_response(info), "structured_extraction"),
         build_entry_variant(info, build_instruction(info), build_response(info), "deep_explanation"),
@@ -1131,6 +2060,12 @@ def mutator_for_bug_slug(bug_slug: str):
         "modulo_operation_in_loop_for_circular_buffer_should_use_chess_circular_buffer_pragma": mutate_modulo_in_loop,
         "accumulator_not_reset_between_output_blocks_dc_offset_accumulates_across_calls": mutate_break_accumulator_reset,
         "begin_vector_width_not_a_power_of_2_e_g_begin_vector_6_which_is_invalid_on_aie": mutate_begin_vector_non_power_of_two,
+        # V2 dedicated: declaration-vs-dereference scope - moves the dereference
+        # OUT of the loop, creating a stale-data bug. This teaches the model the
+        # distinction between iterator declaration site (outside) and dereference
+        # site (inside), which was weakly covered before.
+        "data_read_once_outside_loop_instead_of_inside_stale_data": mutate_dereference_moved_outside_loop,
+        "input_data_read_once_used_in_all_loop_iterations_not_refreshed": mutate_dereference_moved_outside_loop,
     }
     return table.get(bug_slug)
 
@@ -1161,6 +2096,110 @@ def bug_pattern_hint(bug_label: str) -> str:
     return "the specific interface, vector, or scheduling construct named by the bug pattern"
 
 
+def _synth_variant_transform(buggy: str, correct: str, idx: int) -> tuple[str, str]:
+    """Deterministically perturb kernel names and a few safe constants so that
+    repeated synthesis for one taxonomy slug produces textually distinct rows
+    while preserving the injected bug signal."""
+    suffixes = ["", "_v2", "_v3", "_stage_a", "_stage_b", "_pass1", "_pass2", "_cycle3",
+                "_blk0", "_blk1", "_blk2", "_blk3", "_alt", "_retry", "_probe"]
+    loop_bounds = [32, 24, 40, 48, 16, 56, 28, 20, 36, 44, 52, 60, 12, 64, 8]
+    names = ["fir_kernel", "scale_kernel", "stream_kernel",
+             "cascade_stage1", "cascade_stage2", "rtp_kernel", "lock_kernel"]
+    sfx = suffixes[idx % len(suffixes)]
+    bound = loop_bounds[idx % len(loop_bounds)]
+
+    def swap(src: str) -> str:
+        if sfx:
+            for n in names:
+                src = re.sub(rf"\b{re.escape(n)}\b", n + sfx, src)
+        if bound != 32:
+            src = re.sub(r"(?<=for \(int i = 0; i < )32(?=;)", str(bound), src)
+        return src
+
+    return swap(buggy), swap(correct)
+
+
+def build_synthesized_code_debug_entry(bug_entry: dict, scenario_index: int) -> dict | None:
+    """Emit a V2 debug row backed by `synthesize_for_slug` output. Used as the
+    fallback for taxonomy slugs that have no natural mutator, so every slug
+    produces real buggy/correct code (no description-only rows)."""
+    # Lazy import to avoid a circular import: synthesize_taxonomy_bugs imports
+    # BUG_TAXONOMY_ENTRIES from this module.
+    from synthesize_taxonomy_bugs import synthesize_for_slug as _synth_for_slug
+    slug = bug_entry["slug"]
+    label = bug_entry["label"]
+    tier = bug_entry.get("tier") or "normal"
+    try:
+        buggy, correct = _synth_for_slug(slug, label, tier)
+    except Exception:
+        return None
+    if not buggy or not correct or buggy == correct:
+        return None
+    buggy, correct = _synth_variant_transform(buggy, correct, scenario_index)
+    if buggy == correct:
+        return None
+
+    rel = f"synthetic/taxonomy/{slug}/variant_{scenario_index}.cc"
+    group_key = f"synth:{slug}"
+    symptom = pick_symptom(slug, group_key + ":" + str(scenario_index))
+    diff_text = build_unified_diff(buggy, correct, "buggy", "correct")
+    seed_key = rel + "|synth:" + slug + "|" + str(scenario_index)
+    # Split synthetic rows deterministically by slug so no (buggy, correct)
+    # pair for the same slug ever appears on both sides of the train/val line.
+    split = "validation" if deterministic_index(group_key, 5) == 0 else "train"
+
+    if V2_MODE:
+        instruction = build_v2_instruction(seed_key, tier, symptom)
+        response = build_v2_code_response(correct, rel)
+    else:
+        instruction = (
+            f"Debug scenario {scenario_index}: the buggy AIE source below exhibits the `{label}` pattern. "
+            "Return the minimal fix as a unified diff."
+        )
+        response = (
+            f"Verdict: this source matches `{label}` ({slug}). Observed symptom: {symptom}.\n\n"
+            "Minimal fix (unified diff, buggy -> correct):\n"
+            "```diff\n" + diff_text + "\n```\n\n"
+            f"Why the correction restores the contract: {minimal_fix_text({'bug_type': slug}, slug)}"
+        )
+
+    return {
+        "instruction": instruction,
+        "context": (
+            f"Scenario bug pattern: {label}\n"
+            f"Source: {rel}\n\n"
+            "Buggy version:\n"
+            + buggy.rstrip()
+            + "\n\nCorrect version:\n"
+            + correct
+        ),
+        "response": response,
+        "metadata": {
+            "source": rel,
+            "source_repo": f"synthetic_taxonomy:{slug}",
+            "source_branch": None,
+            "source_path": rel,
+            "relative_path": rel,
+            "type": "kernel_type",
+            "category": "synthetic_taxonomy",
+            "hardware": "Versal AIE",
+            "interfaces": [],
+            "vector_types": [],
+            "intrinsics": [],
+            "split": split,
+            "variant": "synthetic_taxonomy_bug_fix",
+            "bug_type": slug,
+            "bug_label": label,
+            "symptom": symptom,
+            "difficulty_tier": tier,
+            "taxonomy_group": bug_entry.get("group"),
+            "source_group": group_key,
+            "synthetic": True,
+            "verdict": "present",
+        },
+    }
+
+
 def build_taxonomy_inspection_entry(info: dict, bug_entry: dict, scenario_index: int) -> dict:
     bug_label = bug_entry["label"]
     bug_slug = bug_entry["slug"]
@@ -1174,15 +2213,20 @@ def build_taxonomy_inspection_entry(info: dict, bug_entry: dict, scenario_index:
         f"`{bug_label}`. If the pattern is present, point to the exact lines and explain the minimal fix. "
         "If the pattern is not evident in this source, say so explicitly and justify your answer from the code."
     )
-    response = (
-        f"Verdict: the `{bug_label}` pattern is not evident in this source. "
-        f"{anchor_text}To judge this, look specifically at {hint}; the source does not show the characteristic "
-        "construction that would produce this failure mode.\n\n"
-        "What the source actually does (for context):\n"
-        f"{build_response(info)}\n\n"
-        "What such a bug would look like if it were present: an explicit, localized mismatch in "
-        f"{hint} near the kernel or graph boundary. Because that mismatch is absent here, no fix is warranted."
-    )
+    if V2_MODE:
+        seed_key = rel + "|insp:" + bug_slug + "|" + str(scenario_index)
+        instruction = build_v2_inspection_instruction(seed_key, bug_label, multi_file=False)
+        response = build_v2_inspection_verdict(seed_key, bug_label, multi_file=False)
+    else:
+        response = (
+            f"Verdict: the `{bug_label}` pattern is not evident in this source. "
+            f"{anchor_text}To judge this, look specifically at {hint}; the source does not show the characteristic "
+            "construction that would produce this failure mode.\n\n"
+            "What the source actually does (for context):\n"
+            f"{build_response(info)}\n\n"
+            "What such a bug would look like if it were present: an explicit, localized mismatch in "
+            f"{hint} near the kernel or graph boundary. Because that mismatch is absent here, no fix is warranted."
+        )
 
     return {
         "instruction": instruction,
@@ -1233,18 +2277,23 @@ def build_taxonomy_mutated_entry(info: dict, bug_entry: dict, scenario_index: in
 
     diff_text = build_unified_diff(buggy_context, info["context"], "buggy", "correct")
 
-    instruction = (
-        f"Debug scenario {scenario_index}: the buggy AIE source below exhibits the `{bug_label}` pattern. "
-        "Locate the offending lines and provide the minimal fix as a unified diff."
-    )
-    response = (
-        f"Verdict: this source matches `{bug_label}` ({bug_slug}). {anchor_text}Observed symptom: {symptom}.\n\n"
-        "Minimal fix (unified diff, buggy -> correct):\n"
-        "```diff\n"
-        + diff_text
-        + "\n```\n\n"
-        f"Why the correction restores the contract: {minimal_fix_text(info, bug_slug)}"
-    )
+    if V2_MODE:
+        seed_key = rel + "|tax:" + bug_slug + "|" + str(scenario_index)
+        instruction = build_v2_instruction(seed_key, bug_entry.get("tier") or "normal", symptom)
+        response = build_v2_code_response(info["context"], info.get("relative_path"))
+    else:
+        instruction = (
+            f"Debug scenario {scenario_index}: the buggy AIE source below exhibits the `{bug_label}` pattern. "
+            "Locate the offending lines and provide the minimal fix as a unified diff."
+        )
+        response = (
+            f"Verdict: this source matches `{bug_label}` ({bug_slug}). {anchor_text}Observed symptom: {symptom}.\n\n"
+            "Minimal fix (unified diff, buggy -> correct):\n"
+            "```diff\n"
+            + diff_text
+            + "\n```\n\n"
+            f"Why the correction restores the contract: {minimal_fix_text(info, bug_slug)}"
+        )
 
     return {
         "instruction": instruction,
@@ -1295,7 +2344,7 @@ def build_taxonomy_debug_scenario_entries(file_infos: list[dict], scenarios_per_
             continue
         has_mutator = mutator_for_bug_slug(bug_entry["slug"]) is not None
         # For mutator-backed slugs, sweep a much larger pool to fill the mutated quota;
-        # otherwise stay with the small sample for inspection-negative rows.
+        # otherwise we fall back to synthesizer-backed code debug rows (no file pool needed).
         pool_size = max(scenarios * 20, 64) if has_mutator else scenarios * 2
         contexts = select_taxonomy_contexts(file_infos, bug_entry["slug"], pool_size)
         produced = 0
@@ -1309,12 +2358,34 @@ def build_taxonomy_debug_scenario_entries(file_infos: list[dict], scenarios_per_
                 rows.append(mutated_entry)
                 produced += 1
                 continue
-            # Only emit an inspection-negative if we still need rows and the mutator did not
-            # apply; stop early once the positive quota is satisfied.
-            if has_mutator and produced > 0:
+            if has_mutator:
+                # This file didn't apply cleanly; skip it and let the next context try.
+                # Do NOT emit inspection-negative rows — the dataset is code-debug only.
                 continue
-            rows.append(build_taxonomy_inspection_entry(info, bug_entry, scenario_index))
+            # No mutator for this slug: fall back to a synthesized code-debug pair.
+            synth_entry = build_synthesized_code_debug_entry(bug_entry, scenario_index)
+            if synth_entry is not None:
+                rows.append(synth_entry)
+                produced += 1
+        # If we couldn't find any natural context (no files matched) AND there's no
+        # mutator, still emit synthesized rows so the slug gets coverage.
+        while not has_mutator and produced < scenarios:
+            scenario_index += 1
+            synth_entry = build_synthesized_code_debug_entry(bug_entry, scenario_index)
+            if synth_entry is None:
+                break
+            rows.append(synth_entry)
             produced += 1
+
+        # Safety net: a mutator-backed slug where NO context matched cleanly would
+        # otherwise produce zero rows. Fall back to synthesis so every taxonomy
+        # slug has real code-debug training data.
+        if produced == 0:
+            for fallback_idx in range(1, max(scenarios, 1) + 1):
+                synth_entry = build_synthesized_code_debug_entry(bug_entry, fallback_idx)
+                if synth_entry is None:
+                    break
+                rows.append(synth_entry)
 
     return rows
 
@@ -1366,6 +2437,14 @@ def build_tiered_bug_instruction(info: dict, bug_type: str | None, symptom: str 
     tier = infer_bug_tier(bug_type)
     bug_label = info.get("bug_label") or bug_type or info.get("bug_type") or "aie_integration_bug"
     symptom_label = symptom or info.get("symptom") or "the design hangs, corrupts output, or underperforms"
+
+    if V2_MODE:
+        seed_key = (
+            str(info.get("relative_path") or "")
+            + "|" + str(bug_type or "")
+            + "|" + str(symptom or "")
+        )
+        return build_v2_instruction(seed_key, tier, symptom), tier
 
     if tier == "easy":
         instruction = (
@@ -1437,6 +2516,9 @@ def build_contrastive_response(
     if anchors is None:
         anchors = extract_code_anchors(buggy.get("context", ""))
     anchor_text = anchor_phrase(anchors)
+
+    if V2_MODE:
+        return build_v2_code_response(correct.get("context", ""), correct.get("relative_path"))
 
     diff_text = build_unified_diff(
         buggy.get("context", ""),
@@ -1642,20 +2724,32 @@ def build_multi_file_bug_pair_entries(file_infos: list[dict], records: list[tupl
 
         for variant_index, related in enumerate(related_list, start=1):
             related_rel = str(related["relative_path"]).replace("\\", "/")
-            instruction = (
-                f"Multi-file debug task (variant {variant_index}): fix `{bug_type}` by reasoning across the primary buggy source, "
-                f"the related connected file `{related_rel}`, and the reference-correct primary file. "
-                "Identify the first cross-file contract violation and provide the minimal corrected code."
-            )
-            response = (
-                f"Cross-file root cause: `{bug_type}`. {anchor_text}Observed symptom: {symptom}. "
-                f"The related file `{related_rel}` defines the shared contract that the primary buggy file violates.\n\n"
-                "Minimal fix (unified diff, buggy primary -> correct primary):\n"
-                "```diff\n"
-                + (diff_text if diff_text else "(no textual difference recoverable - inspect the buggy primary manually)")
-                + "\n```\n\n"
-                f"Why this fix restores cross-file agreement: {minimal_fix_text(buggy, bug_type)}"
-            )
+            if V2_MODE:
+                seed_key = (
+                    str(buggy.get("relative_path") or "")
+                    + "|mf:" + str(bug_type)
+                    + "|" + related_rel
+                    + "|" + str(variant_index)
+                )
+                instruction = build_v2_multi_file_instruction(seed_key, tier, symptom)
+            else:
+                instruction = (
+                    f"Multi-file debug task (variant {variant_index}): fix `{bug_type}` by reasoning across the primary buggy source, "
+                    f"the related connected file `{related_rel}`, and the reference-correct primary file. "
+                    "Identify the first cross-file contract violation and provide the minimal corrected code."
+                )
+            if V2_MODE:
+                response = build_v2_code_response(correct.get("context", ""), correct.get("relative_path"))
+            else:
+                response = (
+                    f"Cross-file root cause: `{bug_type}`. {anchor_text}Observed symptom: {symptom}. "
+                    f"The related file `{related_rel}` defines the shared contract that the primary buggy file violates.\n\n"
+                    "Minimal fix (unified diff, buggy primary -> correct primary):\n"
+                    "```diff\n"
+                    + (diff_text if diff_text else "(no textual difference recoverable - inspect the buggy primary manually)")
+                    + "\n```\n\n"
+                    f"Why this fix restores cross-file agreement: {minimal_fix_text(buggy, bug_type)}"
+                )
 
             rows.append(
                 {
@@ -1732,13 +2826,28 @@ def build_taxonomy_multi_file_debug_entries(
             for info in file_infos
             if info.get("context") and len(parent_index.get(source_parent_key(info), [])) > 1
         ]
-        if not primary_candidates:
+        if not primary_candidates and mutator is not None:
+            # We need real file pairs for mutator-backed multi-file scenarios; without
+            # any eligible pair, skip. Synth-only slugs handle themselves below.
+            continue
+
+        produced = 0
+
+        # For slugs with no mutator we don't need real file pairs; emit synthesized
+        # code-debug rows directly so the dataset stays code-only (no inspection rows).
+        if mutator is None:
+            while produced < per_bug:
+                synth_entry = build_synthesized_code_debug_entry(bug_entry, produced + 1)
+                if synth_entry is None:
+                    break
+                rows.append(synth_entry)
+                produced += 1
             continue
 
         # Widen the primary search pool when a mutator exists so we can actually hit the quota.
         pool_size = max(per_bug * 20, 64) if mutator is not None else per_bug
         primaries = select_taxonomy_contexts(primary_candidates, f"{bug_slug}:multi", pool_size)
-        produced = 0
+
         for scenario_index, primary in enumerate(primaries, start=1):
             if produced >= per_bug:
                 break
@@ -1765,17 +2874,22 @@ def build_taxonomy_multi_file_debug_entries(
             if mutator and buggy_context and buggy_context != primary["context"]:
                 symptom = pick_symptom(bug_slug, source_group_key(primary) + ":mftx:" + bug_slug)
                 diff_text = build_unified_diff(buggy_context, primary["context"], "buggy " + primary_rel, "correct " + primary_rel)
-                instruction = (
-                    f"Multi-file debug scenario {scenario_index}: the primary buggy AIE source and the related file below together "
-                    f"exhibit the `{bug_label}` pattern. Identify the cross-file contract violation and provide the minimal fix as a unified diff."
-                )
-                response = (
-                    f"Verdict: this multi-file scenario matches `{bug_label}`. {anchor_text}Observed symptom: {symptom}. "
-                    f"The related file `{related_rel}` defines the shared contract that the primary buggy file violates.\n\n"
-                    "Minimal fix (unified diff on the primary file):\n"
-                    "```diff\n" + diff_text + "\n```\n\n"
-                    f"Why the correction restores cross-file agreement: {minimal_fix_text(primary, bug_slug)}"
-                )
+                if V2_MODE:
+                    seed_key = primary_rel + "|mftx:" + bug_slug + "|" + related_rel + "|" + str(scenario_index)
+                    instruction = build_v2_multi_file_instruction(seed_key, bug_entry.get("tier") or "normal", symptom)
+                    response = build_v2_code_response(primary["context"], primary.get("relative_path"))
+                else:
+                    instruction = (
+                        f"Multi-file debug scenario {scenario_index}: the primary buggy AIE source and the related file below together "
+                        f"exhibit the `{bug_label}` pattern. Identify the cross-file contract violation and provide the minimal fix as a unified diff."
+                    )
+                    response = (
+                        f"Verdict: this multi-file scenario matches `{bug_label}`. {anchor_text}Observed symptom: {symptom}. "
+                        f"The related file `{related_rel}` defines the shared contract that the primary buggy file violates.\n\n"
+                        "Minimal fix (unified diff on the primary file):\n"
+                        "```diff\n" + diff_text + "\n```\n\n"
+                        f"Why the correction restores cross-file agreement: {minimal_fix_text(primary, bug_slug)}"
+                    )
                 context_block = (
                     f"Scenario bug pattern: {bug_label}\n\n"
                     f"Primary buggy source ({primary_rel}):\n{buggy_context.rstrip()}\n\n"
@@ -1787,32 +2901,17 @@ def build_taxonomy_multi_file_debug_entries(
                 symptom_meta = symptom
                 synthetic_flag = True
             else:
-                # No mutator produced a change; emit an honest inspection response, but only if
-                # we still need to fill the quota and have not already produced positive rows.
-                if mutator is not None and produced > 0:
+                # No mutator produced a change; fall back to a synthesized single-file
+                # code-debug row so the slug is still represented by real buggy/correct
+                # code. We deliberately do NOT emit inspection-negative (description-only)
+                # rows — the dataset is code-debug only.
+                if mutator is not None:
                     continue
-                hint = bug_pattern_hint(bug_label)
-                instruction = (
-                    f"Multi-file inspection task {scenario_index}: decide whether the two AIE sources below jointly exhibit the "
-                    f"`{bug_label}` pattern. If they do, identify the cross-file contract violation and the minimal fix. "
-                    "If they do not, say so explicitly and justify your answer from the code."
-                )
-                response = (
-                    f"Verdict: the `{bug_label}` pattern is not jointly evident across these two files. {anchor_text}"
-                    f"To judge this, look at {hint} on both sides of the shared interface; "
-                    "the two files do not show the characteristic cross-file construction that would produce this failure mode.\n\n"
-                    "What the primary source actually does (for context):\n"
-                    f"{build_response(primary)}"
-                )
-                context_block = (
-                    f"Candidate bug pattern to check: {bug_label}\n\n"
-                    f"Primary source ({primary_rel}):\n{primary['context'].rstrip()}\n\n"
-                    f"Related source ({related_rel}):\n{related['context']}"
-                )
-                variant_name = "taxonomy_multi_file_inspection_negative"
-                verdict = "not_present"
-                symptom_meta = None
-                synthetic_flag = False
+                synth_entry = build_synthesized_code_debug_entry(bug_entry, produced + 1)
+                if synth_entry is not None:
+                    rows.append(synth_entry)
+                    produced += 1
+                continue
 
             rows.append(
                 {
@@ -1860,7 +2959,14 @@ def diversify_bug_rows(rows: list[dict], max_per_bug_type: int = MAX_BUG_ROWS_PE
         metadata = row.get("metadata", {})
         bug_type = str(metadata.get("bug_type") or "unknown")
         source_group = str(metadata.get("source_group") or metadata.get("relative_path") or "unknown")
-        fingerprint = context_diversity_fingerprint(row.get("context", ""))
+        # For synthetic taxonomy rows, namespace the fingerprint by bug_type so
+        # that different slugs routing to the same template are not collapsed.
+        # (normalize_text_for_diversity strips comments and digits, which would
+        # otherwise fold many synth variants into one.)
+        fp_key = row.get("context", "")
+        if metadata.get("variant") == "synthetic_taxonomy_bug_fix":
+            fp_key = f"synth:{bug_type}::" + fp_key
+        fingerprint = context_diversity_fingerprint(fp_key)
 
         if fingerprint in seen_fingerprints:
             continue
@@ -1929,6 +3035,50 @@ def mutate_missing_iterator_increment(context: str) -> str | None:
     mutated, count = re.subn(r"\*\s*([A-Za-z_][A-Za-z0-9_]*)\s*\+\+\s*=", r"*\1 =", context, count=1)
     if count == 1 and mutated != context:
         return mutated
+    return None
+
+
+def mutate_dereference_moved_outside_loop(context: str) -> str | None:
+    """Find an `auto x = *y++;` line that lives inside a for-loop body and hoist it
+    out of the loop. Creates a stale-data bug: the dereference happens once before
+    the loop, so every iteration sees the same value instead of advancing.
+
+    This mutator teaches the model the distinction between where an iterator is
+    DECLARED (outside the loop - legitimate) and where it is DEREFERENCED (inside
+    the loop - the actual fix).
+    """
+    lines = context.split("\n")
+    # Scan top-down for `for (...) {` and look for the first `auto x = *y++;`
+    # in the body before any closing brace at the same depth.
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped.startswith("for ") and not stripped.startswith("for("):
+            continue
+        # Require brace on same line (covers the common AIE kernel style).
+        if "{" not in line:
+            continue
+        # Walk body until matching close brace or hoist candidate.
+        depth = line.count("{") - line.count("}")
+        if depth <= 0:
+            continue
+        for j in range(i + 1, min(i + 30, len(lines))):
+            body_line = lines[j]
+            depth += body_line.count("{") - body_line.count("}")
+            if depth <= 0:
+                break
+            m = re.match(r"^(\s*)(auto\s+[A-Za-z_][A-Za-z0-9_]*\s*=\s*\*\s*[A-Za-z_][A-Za-z0-9_]*\s*\+\+\s*;)\s*$", body_line)
+            if m:
+                # Hoist this line to just before the `for` line.
+                indent_match = re.match(r"^(\s*)", line)
+                hoisted_indent = indent_match.group(1) if indent_match else ""
+                hoisted_line = hoisted_indent + m.group(2)
+                new_lines = list(lines)
+                del new_lines[j]
+                new_lines.insert(i, hoisted_line)
+                mutated = "\n".join(new_lines)
+                if mutated != context:
+                    return mutated
+                return None
     return None
 
 
@@ -2739,6 +3889,7 @@ def build_mutation_candidates(info: dict) -> list[tuple[str, callable]]:
                 ("accumulator_not_reset_between_output_blocks_dc_offset_accumulates_across_calls", mutate_break_accumulator_reset),
                 ("begin_vector_width_not_a_power_of_2_e_g_begin_vector_6_which_is_invalid_on_aie", mutate_begin_vector_non_power_of_two),
                 ("bfloat16_kernel_on_aie1_tile_bfloat16_only_supported_on_aie_ml", mutate_bfloat16_on_aie1),
+                ("data_read_once_outside_loop_instead_of_inside_stale_data", mutate_dereference_moved_outside_loop),
             ]
         )
 
@@ -2950,14 +4101,39 @@ def balance_tier_distribution(rows: list[dict], target: dict[str, float] | None 
 
     total_bugs = len(bug_rows)
     kept: list[dict] = []
-    # Cap each tier to its target share of the current bug-row total. This only
-    # downsamples over-represented tiers; under-represented tiers are kept whole
-    # so the distribution shifts toward target without collapsing to the rarest tier.
+    # Cap each tier to its target share of the current bug-row total. Within a
+    # tier, round-robin across bug_types so no single slug is systematically
+    # dropped by alphabetic truncation (important for full-taxonomy coverage).
     for tier, pool in by_tier.items():
         cap = int(total_bugs * target.get(tier, 1.0)) if tier in target else len(pool)
         cap = max(cap, 0)
-        pool_sorted = sorted(pool, key=row_stable_key)
-        kept.extend(pool_sorted[: max(cap, min(len(pool_sorted), 1))] if tier in target else pool_sorted)
+        if tier not in target:
+            kept.extend(sorted(pool, key=row_stable_key))
+            continue
+        by_slug: dict[str, list[dict]] = {}
+        for r in sorted(pool, key=row_stable_key):
+            slug_key = str(r.get("metadata", {}).get("bug_type") or "unknown")
+            by_slug.setdefault(slug_key, []).append(r)
+        selected: list[dict] = []
+        slug_iters = {s: iter(rows_) for s, rows_ in by_slug.items()}
+        while len(selected) < cap and slug_iters:
+            exhausted = []
+            for s, it in list(slug_iters.items()):
+                if len(selected) >= cap:
+                    break
+                try:
+                    selected.append(next(it))
+                except StopIteration:
+                    exhausted.append(s)
+            for s in exhausted:
+                slug_iters.pop(s, None)
+        # Always guarantee at least one row survives per slug present in the pool
+        # (even if the cap would have been exceeded) so taxonomy coverage is preserved.
+        kept_slugs = {str(r.get("metadata", {}).get("bug_type") or "unknown") for r in selected}
+        for slug_key, rows_ in by_slug.items():
+            if slug_key not in kept_slugs and rows_:
+                selected.append(rows_[0])
+        kept.extend(selected)
 
     balanced = kept + non_bug_rows
     return sorted(balanced, key=row_stable_key)
@@ -3135,6 +4311,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build the AIE instruction dataset from local sources and optional expanded JSONL sources.")
     parser.add_argument("--expanded-source-jsonl", type=Path, default=DEFAULT_EXPANDED_SOURCE_JSONL)
     parser.add_argument("--skip-expanded-source-jsonl", action="store_true")
+    parser.add_argument(
+        "--v2",
+        action="store_true",
+        help="Emit the v2 dataset: debug responses are the full corrected source code (no diffs, no explanatory prose). Outputs go to *_v2_* filenames.",
+    )
     return parser
 
 
@@ -3148,6 +4329,29 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
 
 def main() -> None:
     args = build_parser().parse_args()
+
+    global V2_MODE
+    V2_MODE = bool(args.v2)
+
+    if V2_MODE:
+        # Crank up per-tier scenario quotas so every taxonomy entry gets many more
+        # debug examples, broadening the model's exposure to distinct bug patterns.
+        TAXONOMY_SCENARIOS_PER_TIER.update({
+            "easy": 24,
+            "normal": 24,
+            "medium": 30,
+            "hard": 80,
+            "extra_hard": 80,
+            "cross_cutting": 24,
+        })
+        TAXONOMY_MULTI_FILE_SCENARIOS_PER_TIER.update({
+            "easy": 8,
+            "normal": 8,
+            "medium": 10,
+            "hard": 20,
+            "extra_hard": 20,
+            "cross_cutting": 8,
+        })
 
     file_infos = [info for info in (gather_file_info(path) for path in load_source_files()) if info is not None]
     if not args.skip_expanded_source_jsonl:
@@ -3171,18 +4375,30 @@ def main() -> None:
     for info in file_infos:
         rows.extend(build_entries_for_info(info))
 
+    # V2 tightens caps. bug_pair/multi/synthetic rows often carry bug_type="unknown",
+    # so an aggressive cap would collapse them; we keep those generous and tighten
+    # only the taxonomy buckets where bug_type is always populated.
     bug_pair_records = build_bug_pair_records(file_infos)
-    bug_pair_rows = diversify_bug_rows(build_bug_pair_entries_from_records(bug_pair_records))
-    multi_file_bug_rows = diversify_bug_rows(build_multi_file_bug_pair_entries(file_infos, bug_pair_records))
-    synthetic_bug_rows = diversify_bug_rows(build_synthetic_bug_pair_entries(file_infos))
+    if V2_MODE:
+        v2_diversify_kwargs = {"max_per_bug_type": 6_000, "max_per_source_group": 10_000}
+        v2_taxonomy_cap = 400
+        v2_taxonomy_multi_cap = 300
+    else:
+        v2_diversify_kwargs = {}
+        v2_taxonomy_cap = TAXONOMY_SCENARIOS_PER_BUG_TYPE
+        v2_taxonomy_multi_cap = TAXONOMY_MULTI_FILE_SCENARIOS_PER_BUG_TYPE
+
+    bug_pair_rows = diversify_bug_rows(build_bug_pair_entries_from_records(bug_pair_records), **v2_diversify_kwargs)
+    multi_file_bug_rows = diversify_bug_rows(build_multi_file_bug_pair_entries(file_infos, bug_pair_records), **v2_diversify_kwargs)
+    synthetic_bug_rows = diversify_bug_rows(build_synthetic_bug_pair_entries(file_infos), **v2_diversify_kwargs)
     taxonomy_bug_rows = diversify_bug_rows(
         build_taxonomy_debug_scenario_entries(file_infos),
-        max_per_bug_type=TAXONOMY_SCENARIOS_PER_BUG_TYPE,
+        max_per_bug_type=v2_taxonomy_cap,
         max_per_source_group=10_000,
     )
     taxonomy_multi_file_rows = diversify_bug_rows(
         build_taxonomy_multi_file_debug_entries(file_infos),
-        max_per_bug_type=TAXONOMY_MULTI_FILE_SCENARIOS_PER_BUG_TYPE,
+        max_per_bug_type=v2_taxonomy_multi_cap,
         max_per_source_group=10_000,
     )
 
@@ -3191,18 +4407,97 @@ def main() -> None:
     rows.extend(synthetic_bug_rows)
     rows.extend(taxonomy_bug_rows)
     rows.extend(taxonomy_multi_file_rows)
+
+    if V2_MODE:
+        # Cropped companion variants: same bug, tight context window.
+        cropped = build_v2_cropped_variants(
+            bug_pair_rows + synthetic_bug_rows + multi_file_bug_rows + taxonomy_bug_rows,
+            max_variants=1200,
+        )
+        rows.extend(cropped)
+        # Clean-code distractors: balance the "not present" examples with
+        # legitimate "looks fine" responses so the model doesn't always refuse.
+        clean_rows = build_v2_clean_code_entries(file_infos, target_rows=500)
+        rows.extend(clean_rows)
+        # Compiler-error-first rows: real users paste aiecompiler / chess /
+        # aiesimulator error fragments, not prose. Rewrite a subset of bug rows
+        # to lead with a realistic error message.
+        err_rows = build_v2_compiler_error_rows(
+            bug_pair_rows + synthetic_bug_rows + taxonomy_bug_rows,
+            max_rows=800,
+        )
+        rows.extend(err_rows)
+
     rows = rebalance_bug_ratio_by_split(rows, BUG_FOCUSED_TARGET_RATIO)
-    rows = balance_tier_distribution(rows)
+
+    if V2_MODE:
+        # Shift tier targets toward harder cases - the 494 benchmark's failure
+        # modes concentrate at hard/extra_hard, but the default weighting leaves
+        # them at 25% combined. Bump to 45% combined.
+        v2_tier_targets = {
+            "easy": 0.12,
+            "normal": 0.22,
+            "medium": 0.21,
+            "hard": 0.25,
+            "extra_hard": 0.20,
+        }
+        rows = balance_tier_distribution(rows, target=v2_tier_targets)
+    else:
+        rows = balance_tier_distribution(rows)
+
     rows = cap_rows_by_repo(rows, max_fraction=0.15)
     rows = rebalance_bug_ratio_by_split(rows, BUG_FOCUSED_TARGET_RATIO)
+
+    if V2_MODE:
+        # Cap inspection-negative share so the model doesn't collapse to
+        # "Verdict: not present" as a default answer.
+        rows = cap_negative_ratio(rows, max_ratio=0.18)
+        # Drop near-identical short-response duplicates (verdicts, not full files).
+        rows = dedup_near_identical_responses(rows, max_per_response_key=40, short_threshold=500)
 
     train_rows = [row for row in rows if row["metadata"]["split"] == "train"]
     validation_rows = [row for row in rows if row["metadata"]["split"] == "validation"]
 
-    write_jsonl(OUTPUT_ALL, rows)
-    write_jsonl(OUTPUT_TRAIN, train_rows)
-    write_jsonl(OUTPUT_VALIDATION, validation_rows)
-    write_jsonl(OUTPUT_UPLOAD, rows)
+    if V2_MODE:
+        # 3% general-AIE mix-in from v1 (explanation / extraction / causal rows)
+        # to keep the model from overfitting to "return fixed code" as its only
+        # behavior. v1 rows are already group-split and filtered to their train
+        # side, so no v1 source leaks into the V2 held-out set.
+        mixin_target = max(200, int(len(train_rows) * 0.03))
+        mixin_rows = build_v2_general_code_mixin(OUTPUT_ALL, target_rows=mixin_target)
+        # Drop any mixin row whose group_id collides with the V2 validation groups
+        # (defense in depth - v1 split already excludes these, but belt-and-braces).
+        val_groups = {_row_group_id(r) for r in validation_rows}
+        mixin_rows = [r for r in mixin_rows if r["metadata"].get("group_id") not in val_groups]
+        train_rows = train_rows + mixin_rows
+    else:
+        mixin_rows = []
+
+    # Stamp group_id on every row so downstream trainers can do group-aware splits.
+    stamp_group_ids(train_rows)
+    stamp_group_ids(validation_rows)
+
+    if V2_MODE:
+        out_all, out_train, out_val, out_upload = OUTPUT_ALL_V2, OUTPUT_TRAIN_V2, OUTPUT_VALIDATION_V2, OUTPUT_UPLOAD_V2
+    else:
+        out_all, out_train, out_val, out_upload = OUTPUT_ALL, OUTPUT_TRAIN, OUTPUT_VALIDATION, OUTPUT_UPLOAD
+
+    # In V2 the `_all` file is the "give this single file to the trainer"
+    # artifact: it contains ONLY train-side rows (+ mix-in). The held-out
+    # `_validation.jsonl` file never overlaps any source in `_all`, so when
+    # axolotl / Unsloth splits `_all` internally, its internal eval rows come
+    # from the same train-side source files - the separate `_validation.jsonl`
+    # remains a clean, source-grouped holdout for post-training evaluation.
+    if V2_MODE:
+        write_jsonl(out_all, train_rows)
+    else:
+        write_jsonl(out_all, rows)
+    write_jsonl(out_train, train_rows)
+    write_jsonl(out_val, validation_rows)
+    if V2_MODE:
+        write_jsonl(out_upload, train_rows)
+    else:
+        write_jsonl(out_upload, rows)
 
     unique_source_groups = len({source_group_key(info) for info in file_infos})
     bug_rows = [row for row in rows if is_bug_focused_row(row)]
@@ -3220,6 +4515,7 @@ def main() -> None:
         "taxonomy_multi_file_debug_scenario",
         "taxonomy_inspection_negative",
         "taxonomy_multi_file_inspection_negative",
+        "synthetic_taxonomy_bug_fix",
     }
     taxonomy_bug_type_coverage = len(
         {
@@ -3236,6 +4532,12 @@ def main() -> None:
         f"Debug variant types: {len(debug_variant_types)}. Distinct bug types: {len(distinct_bug_types)}. "
         f"Taxonomy bug types covered: {taxonomy_bug_type_coverage}/{len(BUG_TAXONOMY_ENTRIES)}."
     )
+    if V2_MODE:
+        print(
+            f"V2: _all file contains train-side rows only (no source overlap with _validation.jsonl). "
+            f"General-AIE v1 mix-in: {len(mixin_rows)} rows "
+            f"({(len(mixin_rows)/max(1,len(train_rows))):.2%} of train)."
+        )
 
 
 if __name__ == "__main__":

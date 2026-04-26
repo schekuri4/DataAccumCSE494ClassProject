@@ -1,223 +1,193 @@
-# DataAccum CSE494 Class Project
+﻿# DataAccum CSE494 Class Project
 
-This repository builds a supervised fine-tuning dataset for AMD/Xilinx Versal AI Engine code understanding, debugging, and graph analysis.
+Supervised fine-tuning (SFT) dataset for AMD/Xilinx Versal AI Engine (AIE) code
+understanding, debugging, and graph analysis. The V4 pipeline uses AWS Bedrock
+(DeepSeek V3) to synthetically generate correct AIE mini-projects, compile-validate
+them with real Vitis 2025.2 tooling, then introduce verified bugs.
 
-The current corpus is built from two sources:
+## Dataset Summary (V4 — current)
 
-- Curated real AIE kernel and graph source files scraped from public GitHub repositories.
-- Synthetic AIE kernels and graphs generated to fill coverage gaps and provide controlled bug variants.
+| Metric | Value |
+|---|---|
+| Total rows | **12,920** |
+| Training rows | 11,022 |
+| Validation rows | 1,898 |
+| Verified bug-fix pairs | **3,246** (all audit-confirmed) |
+| Compile-validated negatives | 2,311 |
+| Clean corpus references | 2,879 |
 
-The current processed dataset was rebuilt from the expanded corpus and contains:
+### V4 Bucket Breakdown
 
-- `10,642` total instruction rows
-- `8,508` training rows
-- `2,134` validation rows
-- `3,615` unique source files processed
-- `3,152` unique source groups
-- `80.01%` bug-focused rows (explicit debug/fix supervision)
-- `5,941` responses that teach a fix with a real unified `diff` block
-- `226` distinct bug types, `201 / 205` taxonomy slugs covered
-- Max single-repo share capped at `~19.5%` (no repo dominates)
+| Bucket | Rows |
+|---|---|
+| `bedrock_mutated_bug_fix_pair` | 3,246 |
+| `clean_corpus_reference` | 2,879 |
+| `bedrock_compile_failure_negative` | 2,311 |
+| `negative_from_unvalidated_real_debug_issue` | 1,655 |
+| `compile_validated_replacement` | 1,521 |
+| `compile_validated_original` | 1,295 |
+| `curated_seed_clean` | 11 |
+| `curated_seed_bug_fix` | 2 |
 
-### Tier distribution (bug-focused rows)
+## Pipeline Architecture
 
-| Tier          | Rows  |
-| ------------- | ----- |
-| `normal`      | 3,371 |
-| `easy`        | 2,126 |
-| `hard`        | 920   |
-| `medium`      | 499   |
-| `extra_hard`  | 342   |
+The V4 dataset is produced by a 12-stage pipeline orchestrated by `scripts/run_pipeline.py`.
 
-### Variant mix
-
-| Variant                                   | Rows  |
-| ----------------------------------------- | ----- |
-| `bug_fix_pair`                            | 5,143 |
-| `causal_debugging`                        | 1,185 |
-| `structured_extraction`                   | 1,164 |
-| `deep_explanation`                        | 1,149 |
-| `taxonomy_inspection_negative`            | 872   |
-| `multi_file_bug_fix_pair`                 | 711   |
-| `taxonomy_multi_file_inspection_negative` | 331   |
-| `taxonomy_debug_scenario`                 | 64    |
-| `taxonomy_multi_file_debug_scenario`      | 23    |
-
-## What This Repository Produces
-
-The main outputs are:
-
-- `data/raw/aie_github_sources.jsonl`
-  Curated real-source corpus from public repositories.
-- `data/raw/aie_synthetic_sources.jsonl`
-  Synthetic AIE kernels, graphs, and bug variants.
-- `data/raw/aie_expanded_sources.jsonl`
-  Combined real and synthetic source corpus.
-- `data/processed/aie_instruction_all.jsonl`
-  Fully expanded instruction dataset.
-- `data/processed/aie_instruction_train.jsonl`
-  Training split.
-- `data/processed/aie_instruction_validation.jsonl`
-  Validation split.
-- `data/processed/aie_sft_upload_ready.jsonl`
-  Upload-ready copy of the instruction dataset.
-
-## Data Provenance
-
-The expanded source corpus currently contains:
-
-- `2,437` scraped real entries
-- `557` synthetic entries
-- `2,994` combined source entries
-
-The scraped corpus was finalized from the curated repository crawl only. GitHub code-search discovery was intentionally skipped for the final successful build because the rate-limited search phase was not necessary to reach a useful dataset size.
-
-## Real Source Repositories Used
-
-The current real-source corpus was built from cached scans of these repositories:
-
-### AMD / Xilinx official repositories
-
-- `Xilinx/Vitis-Tutorials`
-  Branches scanned: `2022.1`, `2022.2`, `2023.1`, `2023.2`, `2024.1`, `2024.2`
-- `Xilinx/Vitis-In-Depth-Tutorial`
-- `Xilinx/Vitis_Accel_Examples`
-- `Xilinx/Vitis-AI`
-- `Xilinx/XRT`
-- `Xilinx/embeddedsw`
-- `Xilinx/Vitis_Libraries`
-  Targeted subtrees: `dsp/`, `data_compression/`, `solver/`, `blas/`
-- `Xilinx/Vitis_Model_Composer`
-- `AMD/RyzenAI-SW`
-
-### Research and community repositories
-
-- `arc-research-lab/Aries`
-- `arc-research-lab/AIM`
-- `arc-research-lab/SSR`
-- `advent-lab/GAMA`
-- `enyac-group/MaxEVA`
-- `hanchenye/polyaie`
-- `rehohoho/onnx2versal`
-- `Paolo309/XOHW-23-Versal-Registration`
-- `nod-ai/iree-amd-aie`
-- `pjh177787/my_mlir-aie`
-
-These sources were filtered down to `.cc`, `.cpp`, `.h`, `.hpp`, `.cxx`, and `.hh` files that contain AIE- and ADF-relevant patterns such as `aie::vector`, `input_buffer`, `output_buffer`, `input_stream`, `readincr`, `writeincr`, `adf::graph`, `adf::connect`, `adf::PLIO`, `adf::GMIO`, and `chess_prepare_for_pipelining`.
-
-Files are deduplicated by normalized content hash before inclusion in the raw JSONL corpus.
-
-## Synthetic Source Generation
-
-Synthetic files are used to extend coverage where the real corpus is thin. They are not copied from vendor code verbatim.
-
-The synthetic generator currently emits:
-
-- Correct kernels
-- Correct graphs
-- Buggy kernels
-- Buggy graphs
-
-Coverage includes:
-
-- Data types: `int8`, `int16`, `int32`, `float`, `cint16`, `cint32`, `cfloat`
-- Interfaces: buffer, stream, cascade, async, PLIO, GMIO
-- Patterns such as FIR, FFT butterflies, matrix multiply, beamforming, decimation, interpolation, correlation, QAM demodulation, channel estimation, digital downconversion, CFAR, CORDIC, AGC, matched filtering, and related graph topologies
-
-Bug variants include issues such as:
-
-- token imbalance / deadlock
-- buffer mismatch
-- wrong vector lane width
-- missing pipelining pragmas
-- off-by-one iteration errors
-- accumulator misuse
-- PLIO width mismatches
-
-## Debugging-Focused Supervision
-
-The dataset is explicitly tuned to teach *debugging*, not just code explanation.
-Roughly 80% of rows are bug-focused and most of those carry a **real unified
-`diff`** showing the minimal fix. Key pieces:
-
-- **~29 regex-based mutators** inject realistic, category-specific bugs into
-  known-correct kernel and graph sources. Examples: stream deadlock, window
-  OOB, missing iterator increment, `runtime<ratio>` zero / overflow, PLIO
-  width mismatch, reversed `connect` direction, missing output write, wrong
-  vector lane width, graph dimension mismatch, subtraction-for-addition,
-  mul-to-add, `to_vector` shift-by-15, `acc48`-for-`acc80`, loop-count halved,
-  window-size halved, removed accumulator zeros-init, broadcast width
-  mismatch, duplicate stream read, dropped last sample, removed
-  `chess_prepare_for_pipelining`, `readincr` from output, `break` in a
-  pipelined loop, port-index OOB, missing `graph.wait()`, missing
-  `adf::connect`, self-loop `connect`, wrong `to_vector` output type,
-  missing `adf::source`, missing `runtime<ratio>`, window-margin-to-size,
-  `bfloat16`-on-AIE1, signed/unsigned mismatch, unaligned load,
-  modulo-in-loop, broken accumulator reset, non-power-of-two `begin_vector`.
-- **Unified-diff responses** on every `bug_fix_pair` and
-  `multi_file_bug_fix_pair` row, produced with `difflib`, anchored to the
-  real buggy / correct file contents.
-- **Real symptom strings** (not templated scaffolds) per bug category, e.g.
-  *"aiecompiler reports tile overcommitted: sum of runtime ratios exceeds 1.0"*.
-- **Explicit negative examples** (`taxonomy_inspection_negative` and
-  `taxonomy_multi_file_inspection_negative`, 1,203 rows) where the model is
-  asked whether a candidate bug is present and the correct verdict is
-  `not_present` — this is anti-hallucination supervision.
-- **Multi-file debugging** (`multi_file_bug_fix_pair`, 711 rows) where the
-  root cause is cross-file and the model must reason across a buggy primary
-  source, a related header/graph, and a reference-correct primary.
-- **Tier-aware oversampling** so `hard` and `extra_hard` bugs are not
-  drowned out by the more numerous `easy` / `normal` patterns.
-- **Diversity caps**: per bug type, per source group, and per source repo
-  (≤15% share) to prevent the model memorizing any one repo or template.
-
-## Dataset Shape
-
-Each processed row contains:
-
-- `instruction`
-- `context`
-- `response`
-- `metadata`
-
-The builder creates several task variants per source, including:
-
-- general analysis
-- feature extraction
-- debug risk analysis
-- dataflow explanation
-- bug-fix pair comparisons
-- single-file and multi-file bug-fix diffs
-- taxonomy inspection (both positive and *not-present* verdicts)
-- causal debugging walkthroughs
-
-This makes the final instruction count much larger than the raw source-file count.
-
-## Rebuild Commands
-
-### Rebuild the source corpus from cached curated repositories and synthetic generation
-
-```powershell
-& "c:/Users/schek/OneDrive/Desktop/494 project/.venv/Scripts/python.exe" scripts/build_aie_source_corpus.py all --skip-code-search --synthetic-kernels 100 --synthetic-graphs 40
+```
+generate → compile → mutate → negatives → merge_neg → merge_mut
+    → screen → rm_offtop → audit → rm_absent → retry → add_retry
 ```
 
-### Rebuild the processed instruction dataset from the combined source JSONL
+### Stage Details
+
+| Stage | Script | Description |
+|---|---|---|
+| `generate` | `bedrock_synth_taxonomy.py` | Bedrock: generate correct AIE mini-projects per bug-topic slug |
+| `compile` | `run_validate_wsl.sh` | WSL Vitis 2025.2: compile-validate the generated baselines |
+| `mutate` | `generate_bedrock_buggy_from_correct.py` | Bedrock: introduce targeted bugs into compile-ok correct code |
+| `negatives` | `bedrock_fix_compile_failures.py` | Bedrock: fix compile failures → extract compile-failure negatives |
+| `merge_neg` | `add_bedrock_compile_negatives_to_v4.py` | Add compile-failure negatives to V4 dataset |
+| `merge_mut` | `add_bedrock_mutations_to_v4.py` | Add mutation bug-fix pairs to V4 dataset |
+| `screen` | `screen_offtopic_correct_baselines.py` | Keyword-relevance screen: flag off-topic baselines |
+| `rm_offtop` | `remove_offtopic_mutations_from_v4.py` | Remove V4 rows derived from off-topic baselines |
+| `audit` | `audit_bug_presence_v4.py` | Bedrock: verify each mutation pair actually has the claimed bug |
+| `rm_absent` | `remove_bugabsent_from_v4.py` | Remove bug-absent pairs + write retry queue |
+| `retry` | `remutate_bugabsent.py` | Bedrock: re-mutate the failed source_ids with stronger prompting |
+| `add_retry` | `add_bedrock_mutations_to_v4.py` | Merge re-mutated pairs into V4 |
+
+### Running the Pipeline
 
 ```powershell
-& "c:/Users/schek/OneDrive/Desktop/494 project/.venv/Scripts/python.exe" scripts/build_aie_instruction_dataset.py --expanded-source-jsonl data/raw/aie_expanded_sources.jsonl
+# Prerequisites
+$env:AWS_BEARER_TOKEN_BEDROCK = "<your-bedrock-token>"
+
+# Full pipeline
+python scripts/run_pipeline.py
+
+# Resume from a specific stage
+python scripts/run_pipeline.py --from-stage audit
+
+# Run specific stages only
+python scripts/run_pipeline.py --stages mutate merge_mut audit rm_absent retry add_retry
+
+# Force re-run even if outputs already exist
+python scripts/run_pipeline.py --stages audit --force --workers 12
+
+# List all stages
+python scripts/run_pipeline.py --list
 ```
 
-## Fine-Tuning Outputs
+Each stage has smart idempotency: if its output already exists it is skipped
+unless `--force` is passed.
 
-The repository also includes local fine-tuning support:
+## AIE Mini-Project Format
 
-- `scripts/train_unsloth_windows.py`
-- `scripts/setup_unsloth_windows.ps1`
-- `unsloth/LOCAL_WINDOWS_FINE_TUNE.md`
-- `axolotl/LOCAL_FINE_TUNE.md`
+Each synthetic project follows a two-file pattern that the real Vitis compiler
+can actually process:
 
-For the current Windows workflow, the practical local target is `Qwen/Qwen2.5-Coder-7B-Instruct` using the processed instruction dataset.
+```
+// FILE: graph.h        ← uses <adf.h>, declares ports and graph topology
+// FILE: kernels/<name>.cc   ← uses readincr/writeincr for stream I/O
+```
 
-## Source Citations
+The compiler is invoked as `aiecompiler --target=hw` inside WSL Ubuntu-24.04
+with Vitis 2025.2 mounted at `/vitis/2025.2/Vitis`.
 
-See `CITATIONS.md` for the repository-by-repository provenance list used for the current corpus and the documentation references used for synthetic bug taxonomy design.
+## Bug Taxonomy
+
+The dataset covers **205 bug-topic slugs** across 8 broad categories:
+
+- **Stream I/O**: token imbalance/deadlock, cascade protocol errors, wrong port direction
+- **Memory**: buffer overflows, window OOB, unaligned loads, wrong tile assignment
+- **Pipelining**: missing `chess_prepare_for_pipelining`, wrong `runtime<ratio>`, loop breaks
+- **Data types**: `acc48`-for-`acc80`, `bfloat16` on AIE1, signed/unsigned mismatch, wrong vector lane width
+- **Graph topology**: reversed `connect`, self-loop, missing `adf::source`, duplicate reads
+- **Compile budget**: program memory exceeded, tile overcommit
+- **Math/logic**: subtraction-for-addition, modulo in loop, accumulator reset bugs
+- **PLIO/GMIO**: PLIO width mismatch, `GMIO` burst length errors
+
+## Bug Verification (Audit System)
+
+All mutation pairs are audited by asking Bedrock to confirm the bug is actually
+present before inclusion in V4. Audit result from first full run:
+
+| Result | Count | % |
+|---|---|---|
+| Bug present ✅ | 3,246 | 85.6% |
+| Bug absent ❌ (removed) | 545 | 14.4% |
+| **Total audited** | **3,791** | 100% |
+
+The 545 removed pairs are written to `data/processed/v4/bug_absent_source_ids.jsonl`
+and re-attempted by the `retry` stage using a stronger prompt that includes the
+audit failure explanation and higher sampling temperature.
+
+## Repository Structure
+
+```
+scripts/
+  run_pipeline.py                        ← main orchestrator (run this)
+  bedrock_synth_taxonomy.py              ← stage: generate
+  run_validate_wsl.sh                    ← stage: compile (WSL Vitis)
+  generate_bedrock_buggy_from_correct.py ← stage: mutate
+  bedrock_fix_compile_failures.py        ← stage: negatives
+  add_bedrock_compile_negatives_to_v4.py ← stage: merge_neg
+  add_bedrock_mutations_to_v4.py         ← stage: merge_mut / add_retry
+  screen_offtopic_correct_baselines.py   ← stage: screen
+  remove_offtopic_mutations_from_v4.py   ← stage: rm_offtop
+  audit_bug_presence_v4.py               ← stage: audit
+  remove_bugabsent_from_v4.py            ← stage: rm_absent
+  remutate_bugabsent.py                  ← stage: retry
+  build_verified_v4_dataset.py           ← builds final V4 train/val splits
+  scripts/_archive/                      ← superseded V1–V3 scripts
+
+data/
+  raw/
+    bedrock_expanded_bug_topics.txt      ← 205-slug bug taxonomy with prompts
+  processed/
+    v4/
+      aie_instruction_v4_summary.json   ← dataset stats (committed)
+      bug_presence_audit.jsonl           ← per-pair audit results (committed)
+      bug_absent_source_ids.jsonl        ← retry queue for failed mutations
+      aie_instruction_v4_all.jsonl       ← full dataset (gitignored, >50 MB)
+      aie_instruction_v4_train.jsonl     ← training split (gitignored)
+      aie_instruction_v4_validation.jsonl← validation split (gitignored)
+    v3/                                  ← intermediate files (gitignored)
+
+axolotl/                                 ← fine-tuning configs (QLoRA, SFT)
+unsloth/                                 ← Windows fine-tuning guide
+aie_dataset/                             ← curated real AIE source examples
+```
+
+## Environment Setup
+
+### Python (Windows)
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install boto3 requests tqdm
+```
+
+### WSL Vitis (compile validation)
+
+Vitis 2025.2 must be installed at `/vitis/2025.2/Vitis` inside Ubuntu-24.04 on WSL.
+The compile validator is invoked automatically by the pipeline via `run_validate_wsl.sh`.
+
+### AWS Bedrock
+
+Set the bearer token before running any Bedrock stage:
+
+```powershell
+$env:AWS_BEARER_TOKEN_BEDROCK = "<your-token>"
+```
+
+Model used: `deepseek.v3.2`, region `us-east-1`.
+
+## Fine-Tuning
+
+See `axolotl/` for QLoRA configs targeting Qwen2.5-Coder-7B and 14B, and
+`unsloth/LOCAL_WINDOWS_FINE_TUNE.md` for local Windows fine-tuning with Unsloth.
+
+## Citations
+
+See `CITATIONS.md` for all referenced works and dataset sources.

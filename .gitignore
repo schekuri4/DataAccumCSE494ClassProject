@@ -27,3 +27,35 @@ Thumbs.db
 
 # Temporary scratch scripts
 scripts/_*.py
+
+# Vitis / AIE compiler build artifacts
+.Xil/
+Work/
+AIECompiler.log
+*.log
+
+# Large intermediate data files - too big for GitHub (>50 MB)
+# Keep: scripts, configs, small metadata JSON, summary files, topic lists
+# Ignore: bulk JSONL datasets and archives
+data/processed/v3/
+data/processed/_v1_archive/
+data/processed/archive_v2_and_synthpairs_*/
+data/processed/compile_results/
+archive_20260425/
+
+# V4 bulk JSONL (keep summary + audit metadata, ignore large train/val/all)
+data/processed/v4/aie_instruction_v4_all.jsonl
+data/processed/v4/aie_instruction_v4_train.jsonl
+data/processed/v4/aie_instruction_v4_validation.jsonl
+
+# Old processed files replaced by V4 pipeline
+data/processed/aie_instruction_all.jsonl
+data/processed/aie_instruction_train.jsonl
+data/processed/aie_instruction_validation.jsonl
+data/processed/aie_sft_upload_ready.jsonl
+data/processed/train.jsonl
+data/processed/validation.jsonl
+data/processed/train_both.py
+data/processed/colab_deepseek_33b.py
+"data/processed/New Bitmap image.bmp"
+data/processed/taxonomy_source_files.txt

@@ -1,0 +1,318 @@
+KERNEL COMPUTATION BUGS
+Coefficient reuse across channels when each channel needs independent coefficients
+Coefficient loaded inside loop instead of outside causing repeated memory fetch overhead
+Coefficient array declared const but modified at runtime via pointer cast
+Coefficient index wraps before all taps applied due to wrong modulo bound
+Symmetric filter exploits symmetry incorrectly - wrong tap pairing
+Polyphase filter selects wrong phase for given input sample
+Decimation filter applies coefficients in reverse order
+Interpolation filter inserts zeros in wrong positions relative to coefficients
+Cross-correlation vs autocorrelation confusion - operand order swapped
+Convolution vs correlation sign convention wrong - kernel flipped when it should not be
+FIR direct form vs transposed form implementation mismatch with expected output
+IIR feedback tap reads from wrong delay line position
+IIR stability lost because feedback coefficients stored in wrong order
+Biquad section a0 coefficient assumed normalized to 1.0 but is not
+Biquad section input/output ordering wrong between cascaded sections
+Second-order section processes in reverse order relative to expected response
+Cascade-of-biquads shares state between sections when each needs independent state
+Lattice filter reflection coefficient sign convention wrong
+Goertzel algorithm missing final power computation step
+Goertzel frequency index does not correspond to requested bin
+DFT twiddle factor computed for wrong normalization convention
+IFFT missing 1/N normalization factor
+FFT bit-reversal permutation applied to output instead of input or vice versa
+FFT butterfly wrong radix - radix-4 butterfly written as radix-2
+FFT in-place computation overwrites values before second use
+Split-radix FFT wrong branching at recursion boundary
+FFT real-valued optimization discards needed imaginary component
+Cooley-Tukey reindexing formula has wrong stride
+FFT decimation-in-time vs decimation-in-frequency confusion
+Hartley transform used where Fourier transform expected
+DCT type confusion - DCT-II vs DCT-IV vs DST
+MDCT window function applied once instead of twice
+Walsh-Hadamard transform wrong sign pattern
+Hilbert transform via FFT missing phase shift step
+Analytic signal computation discards negative frequencies incorrectly
+Instantaneous frequency computation missing unwrap step
+Phase accumulator wraps at wrong value
+NCO frequency word wrong bit width causing frequency resolution loss
+CORDIC iteration count too low causing angle approximation error
+CORDIC rotation vs vectoring mode selected incorrectly
+Square root Newton-Raphson iteration count insufficient for precision
+Reciprocal approximation initial guess out of convergence range
+Log approximation wrong domain - input not pre-scaled to [0.5, 1.0]
+Exponential approximation missing range reduction step
+Polynomial evaluation Horner's method has wrong coefficient order
+LUT interpolation reads wrong adjacent entry for fractional index
+LUT index computed with wrong number of fractional bits
+Bilinear interpolation weight computation has axes swapped
+Nearest-neighbor rounding direction inconsistent with expected behavior
+FIXED-POINT ARITHMETIC BUGS
+Q-format mismatch - one operand in Q15, other in Q12, result interpreted as Q15
+Q-format product has wrong number of integer bits for given inputs
+Guard bits insufficient for summation of N values
+Rounding mode inconsistent - truncation used where round-half-up expected
+Saturation check missing before narrow type assignment
+Two's complement overflow detection wrong - signed comparison on unsigned value
+Unsigned subtraction wraps instead of saturating to zero
+Right shift on signed type is implementation-defined (logical vs arithmetic)
+Left shift amount equals or exceeds type width - undefined behavior
+Bit-exact match expected but floating-point intermediate used
+Fixed-to-float conversion uses wrong scale factor
+Float-to-fixed conversion truncates instead of rounds
+Magnitude computation uses abs() which does not handle INT_MIN correctly
+Sign-magnitude to two's complement conversion wrong
+One's complement negation used where two's complement expected
+BCD arithmetic mixed with binary arithmetic without conversion
+Carry-save representation not resolved before final output
+Carry-lookahead result has wrong width for downstream addition
+SIGNAL PROCESSING DOMAIN BUGS
+Window function (Hann, Hamming, Blackman) applied twice
+Window function not normalized - total power wrong by constant factor
+Overlap-add method uses wrong overlap amount
+Overlap-save method discards wrong portion of each block
+STFT analysis hop size does not match synthesis hop size
+STFT phase vocoder wrong accumulation of phase increments
+Spectral leakage compensation wrong bin width assumption
+Zero-padding amount wrong - changes frequency resolution unexpectedly
+Circular convolution used where linear convolution needed
+Linear convolution used where circular needed (periodic signal processing)
+Cross-spectrum normalization missing - coherence computation wrong
+Power spectral density normalization wrong for one-sided vs two-sided
+Welch method segment overlap wrong
+Bartlett method missing final normalization
+Periodogram wrong for non-power-of-two block sizes
+Matched filter time-reversal missing - template not conjugate-reversed
+Pulse compression peak location off by one sample
+Range-Doppler coupling compensation wrong sign
+Beamforming steering vector phase wrong sign convention
+Delay-and-sum beamformer fractional delay interpolation wrong order
+Spatial aliasing - array spacing assumption wrong relative to wavelength
+MUSIC/ESPRIT algorithm wrong subspace selection
+Sample rate conversion ratio stored as integer truncating fractional part
+Farrow filter structure coefficient ordering wrong
+CIC filter compensation FIR wrong passband scaling
+Resampling filter not compensating for CIC droop
+Sigma-delta modulator feedback path missing
+Dithering signal level too high - adds audible noise
+Noise shaping filter order too high causing instability
+Pre-emphasis filter used on already pre-emphasized input
+De-emphasis coefficient does not match pre-emphasis coefficient
+AGC attack and release time constants swapped
+Compander law wrong - A-law vs mu-law confusion
+Vocoder frame rate does not match analysis/synthesis filter rate
+MULTIRATE SIGNAL PROCESSING
+Polyphase decomposition wrong - filter not split into correct phases
+Polyphase bank filter index does not match subsampling phase
+Noble identity applied in wrong direction - filtering after downsampling instead of before
+Upsampling factor applied to wrong dimension in 2D processing
+Downsampling by M but filter designed for downsampling by N
+Aliasing not prevented - anti-aliasing filter cutoff too high
+Imaging not prevented - anti-imaging filter cutoff too high
+Halfband filter exploits zero coefficients incorrectly
+Two-channel QMF bank reconstruction formula wrong
+Quadrature mirror condition not satisfied - aliasing cancellation fails
+Analysis and synthesis filters from different filter bank design
+Critically sampled vs oversampled filter bank confusion
+Channelizer wrong - wrong number of output channels extracted
+Channelizer center frequencies do not match expected channel spacing
+Synthesis filter bank wrong - reconstruction not perfect
+Dyadic filter bank decomposition depth wrong
+Wavelet transform boundary extension method wrong
+Wavelet coefficient threshold soft vs hard thresholding confusion
+Daubechies coefficient table wrong order or normalization
+Lifting scheme predict and update steps swapped
+COMPLEX NUMBER ARITHMETIC
+Complex multiplication using 4 multiplications instead of 3 (Karatsuba) when precision matters
+Complex multiplication real and imaginary parts formula wrong
+Complex division normalization by magnitude-squared wrong
+Complex magnitude uses integer abs() instead of floating-point hypot()
+Complex phase uses atan2 with arguments swapped
+Complex exponential real and imaginary parts swapped
+Complex conjugate sign applied to wrong component
+Complex dot product missing conjugation of one operand
+Complex power computation wrong - uses real exponentiation
+Complex logarithm missing branch cut handling
+Real part incorrectly discarded after complex computation
+Imaginary part incorrectly discarded after complex computation
+cint16 packing assumes wrong byte order for real/imag components
+cfloat packing has wrong struct member ordering
+Complex vector interleaving wrong - RIRI vs RRII confusion
+Complex FFT treating interleaved real data as complex incorrectly
+MEMORY ACCESS PATTERNS
+Row-major vs column-major access mismatch for 2D buffer
+Stride computation wrong for non-contiguous memory layout
+Ping-pong buffer index not toggled between frames
+Double buffer read and write pointers aliased to same buffer
+Circular buffer head/tail update wrong - head advanced instead of tail
+Ring buffer size not power of two but modulo used as power-of-two optimization
+Delay line shift wrong - newest sample in wrong position
+FIFO implemented as LIFO or vice versa (stack vs queue confusion)
+Cache-unfriendly access pattern in kernel that shares tile with other kernels
+Prefetch distance too large - prefetches data that gets evicted before use
+Write-combining barrier missing - partial writes visible to reader
+Memory copy wrong direction - dst and src swapped in memcpy analog
+Overlap in memcpy equivalent - should use memmove analog
+DMA source and destination addresses swapped
+DMA transfer length in bytes when API expects elements or vice versa
+DMA stride does not match buffer layout - non-contiguous transfer
+DMA 2D transfer row/column dimensions swapped
+Scatter-gather DMA descriptor list terminated early
+Memory-mapped register write missing read-modify-write sequence
+Atomic operation used where non-atomic sufficient causing unnecessary serialization
+Non-atomic operation used where atomic required causing race condition
+SYNCHRONIZATION AND CONCURRENCY
+Lock acquired but released in wrong scope
+Lock released without being acquired
+Double-lock attempt on non-reentrant lock
+Wrong lock ID used - kernel acquires lock meant for different buffer
+Lock polarity wrong - acquire waits for wrong state (0 vs 1)
+Lock protocol asymmetric - producer releases twice, consumer acquires once
+Barrier not reached by all tiles - deadlock
+Semaphore initial count wrong
+Event broadcast when signal expected or vice versa
+Critical section too narrow - shared data accessed outside lock
+Critical section too wide - unnecessary serialization of parallel work
+Read-write lock used as exclusive lock unnecessarily
+Priority inversion - low-priority task holds lock needed by high-priority task
+Spurious wakeup not handled in wait loop
+Condition variable signal before thread reaches wait - signal lost
+Fence ordering wrong - store-load instead of load-store
+Memory ordering too weak - relaxed when acquire-release needed
+Memory ordering too strong - sequential consistency when relaxed sufficient
+Interrupt handler and main path share data without synchronization
+Interrupt disabled too long - missing real-time deadline
+GRAPH CONSTRUCTION BUGS
+Graph constructor does not call base class constructor
+Graph destructor does not properly release resources
+Subgraph instantiation missing required template parameters
+Subgraph port connection uses wrong subgraph port index
+Hierarchical graph port forwarding connected wrong (wrong level)
+Two subgraphs that should be independent share a port connection
+Graph template parameter passed through incorrectly to subgraph
+Parameterized graph uses wrong default template argument
+Graph array of kernels indexed wrong - off by one in connection loop
+Graph array of kernels has wrong size - one kernel missing
+Connection loop termination wrong - last connection missing
+Connection loop creates N+1 connections instead of N
+Feedback connection not properly annotated for scheduler
+Graph with both PLIO and GMIO for same data path - duplicate source
+Graph input PLIO not connected to any kernel
+Graph output PLIO not driven by any kernel
+Net graph rate between subgraphs unbalanced
+Two graphs instantiated but inter-graph connections missing
+Port direction wrong - inout used where in needed or vice versa
+KERNEL TEMPLATE AND PARAMETERIZATION BUGS
+Template parameter used for both data type and coefficient type when they differ
+Template parameter for window size passed as samples but used as bytes
+Template parameter for filter length includes or excludes a tap inconsistently
+Template specialization for complex type missing - falls through to real version
+Template non-type parameter for vector width not a power of two
+Constexpr computation for derived parameter overflows at compile time
+Static_assert condition wrong - rejects valid configurations
+Template parameter propagation skips one level - grandchild uses wrong value
+Default template argument wrong - silent fallback to incorrect configuration
+Template parameter for accumulator type hardcoded instead of derived from data type
+Variadic template unpacking wrong order for cascade chain construction
+Template metaprogramming selects wrong type from type list
+PERFORMANCE AND THROUGHPUT
+Kernel bottleneck from scalar fallback for one data type in otherwise vectorized code
+Throughput limited by coefficient reload each invocation when coefficients are static
+Unnecessary data conversion between kernels consuming extra cycles
+Redundant computation repeated across iterations that could be hoisted
+Function call overhead inside tight loop preventing VLIW scheduling
+Large switch statement inside loop preventing software pipelining
+Pointer aliasing prevents auto-vectorization of inner loop
+Unaligned access forces scalar fallback on hot path
+Unnecessary synchronization between parallel kernels on critical path
+Memory bandwidth wasted loading same coefficient block multiple times
+Kernel work not balanced across tiles - one tile is bottleneck
+Ping-pong buffer not hiding DMA latency due to wrong timing
+Graph scheduled with too many idle cycles between kernel invocations
+Kernel with excessive prolog and epilog relative to steady-state iterations
+Software pipeline initiation interval (II) larger than needed due to loop-carried dependency
+Accumulator chain depth sub-optimal - too few parallel accumulators
+Unrolling factor wrong - loop not fully pipelined due to partial unroll
+Throughput reduced by unnecessary type conversion between computation phases
+VLIW slots wasted due to poor instruction scheduling from pragma placement
+Kernel uses scalar function for operation that has vector intrinsic
+TEST AND VERIFICATION BUGS
+Test stimulus all zeros - masks bugs that only appear with non-zero input
+Test stimulus all constant - masks bugs in time-varying paths
+Test checks only first output sample, ignores rest
+Test tolerance too loose - accepts wrong answers as correct
+Test tolerance too tight - rejects correct fixed-point results
+Test stimulus does not include boundary values (max positive, max negative, zero)
+Test comparison against reference computed with wrong precision
+Test reference uses float where kernel uses fixed - scale mismatch
+Test reads output file wrong size - extra or missing samples
+Test does not account for pipeline latency - checks output too early
+Test frame count wrong - stops before steady-state reached
+Test pattern period exactly equal to filter length - masks coefficient indexing bugs
+Test only covers happy path - never tests saturation or overflow
+Test applies stimulus to wrong input port
+Test reads from wrong output port
+Golden reference generated with different normalization than kernel uses
+Test infrastructure adds latency not present in actual graph
+Test wrapper does not initialize buffers - garbage input data
+Test harness masks memory alignment bugs via padding
+Test does not verify output sample count - only checks values of whatever arrives
+DOCUMENTATION AND SPECIFICATION INTERPRETATION
+API documentation example uses deprecated function - newer API has different behavior
+Data sheet accumulator width stated as output width, not internal precision
+Port naming convention inconsistent between documentation and actual API
+Bit-numbering convention MSB-0 vs LSB-0 confused in register field extraction
+Byte ordering documentation wrong - silicon behavior differs from datasheet
+Sample rate specification in samples/cycle vs samples/clock cycle vs samples/second
+Latency specification in cycles vs samples vs microseconds confused
+Bandwidth specification in bits/second vs bytes/second vs samples/second
+Buffer size specification in words vs bytes vs samples confused
+Precision specification significant bits vs bits after binary point confused
+Dynamic range specification in dB full-scale vs dB relative confused
+Phase response specification in radians vs degrees vs normalized
+Frequency specification in Hz vs normalized (0 to 1) vs normalized (0 to pi) confused
+Filter order specification N taps vs N-1 taps convention conflict
+Transfer function pole/zero specification format wrong
+Group delay specification at wrong frequency point
+Signal convention real-valued bandpass vs complex baseband confused
+Interleaving specification for multi-channel data wrong
+Endianness specification for multi-byte samples wrong
+Bit packing specification for sub-byte samples wrong
+NUMERICAL STABILITY AND PRECISION
+Catastrophic cancellation - subtracting nearly equal large numbers
+Summation order wrong - large terms added before small terms causing loss
+Compensated summation (Kahan) missing for long accumulations
+Running mean computation accumulates error faster than batch computation
+Variance computation using naive formula loses precision for near-constant data
+Correlation coefficient denominator can be zero - no guard
+Matrix condition number too high - inversion numerically unstable
+Gram-Schmidt orthogonalization loses orthogonality after many iterations
+Cholesky decomposition fails for nearly-singular positive definite matrix
+LU decomposition without pivoting fails for certain valid inputs
+Iterative solver diverges because convergence criterion wrong
+Newton's method step size too large - overshoots and diverges
+Gradient descent learning rate too high - oscillates instead of converging
+Normalization of near-zero vector produces NaN or Inf
+Reciprocal of near-zero value overflows
+Log of zero or negative value produces NaN
+Square root of negative value from rounding error
+Comparison of floating-point values with == instead of tolerance check
+Denormal floating-point values causing performance cliff
+NaN propagation not detected - NaN silently corrupts downstream computation
+HOST AND CONTROL PATH BUGS
+Host reads output before graph completes execution
+Host writes input after graph has already consumed buffer
+Host loop count wrong - launches kernel for wrong number of iterations
+Host does not reinitialize output buffer between runs - stale data
+Host runtime parameter update too late - kernel already past the read point
+Host reads partial output - output file truncated
+Host endianness swap wrong for multi-byte samples from device
+Host data type cast wrong when reading device output
+Host timing measurement starts before graph initialized - includes setup latency
+Host reports wrong throughput because transfer size counted twice
+Host error handling swallows error code - failure looks like success
+Host does not wait for all tiles to complete before reading output
+Host graph run count wrong - one more or fewer iteration than needed
+Host platform API version mismatch - old host code with new runtime
+Host memory allocation not aligned to DMA requirement
