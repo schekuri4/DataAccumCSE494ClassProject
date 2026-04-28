@@ -1,23 +1,21 @@
 {
-  "rows_before_bugabsent_removal": 13465,
-  "rows_removed_bugabsent": 545,
   "all": {
-    "rows": 12920
+    "rows": 15429,
+    "bucket_counts": {
+      "compile_validated_original": 1293,
+      "compile_validated_replacement": 1494,
+      "negative_from_unvalidated_real_debug_issue": 1655,
+      "curated_seed_bug_fix": 2,
+      "curated_seed_clean": 11,
+      "clean_corpus_reference": 2879,
+      "bedrock_compile_failure_negative": 2311,
+      "bedrock_mutated_bug_fix_pair": 5784
+    }
   },
   "train": {
-    "rows": 11022
+    "rows": 13042
   },
   "validation": {
-    "rows": 1898
-  },
-  "bucket_counts": {
-    "compile_validated_original": 1295,
-    "compile_validated_replacement": 1521,
-    "negative_from_unvalidated_real_debug_issue": 1655,
-    "curated_seed_bug_fix": 2,
-    "curated_seed_clean": 11,
-    "clean_corpus_reference": 2879,
-    "bedrock_compile_failure_negative": 2311,
-    "bedrock_mutated_bug_fix_pair": 3246
+    "rows": 2387
   }
 }

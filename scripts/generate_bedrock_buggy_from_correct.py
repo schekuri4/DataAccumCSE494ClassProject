@@ -8,10 +8,12 @@ writes paired rows containing both buggy and correct code.
 from __future__ import annotations
 
 import argparse
+import difflib
 import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -31,7 +33,8 @@ from bedrock_synth_taxonomy import (  # noqa: E402
 
 DEFAULT_INPUT = ROOT / "data" / "processed" / "v3" / "bedrock_compile_validated_correct_full_budget80.jsonl"
 DEFAULT_OUTPUT = ROOT / "data" / "processed" / "v3" / "bedrock_buggy_from_compile_validated_correct.jsonl"
-DEFAULT_MODEL = "deepseek.v3.2"
+DEFAULT_V5_OUTPUT = ROOT / "data" / "processed" / "v5" / "bedrock_compile_bug_rows_v5.jsonl"
+DEFAULT_MODEL = "moonshotai.kimi-k2.5"
 DEFAULT_REGION = "us-east-1"
 DEFAULT_WORKERS = 12
 DEFAULT_MAX_TOKENS = 4096
@@ -42,7 +45,7 @@ BUGGY_RE = re.compile(r"<BUGGY>(.*?)</BUGGY>", re.DOTALL)
 
 MUTATION_TEMPLATE = """\
 You are given a CORRECT AIE mini-project that already compiled with Vitis AIE.
-Create a BUGGY version for a bug-fix training pair.
+Create a BUGGY version for a compile-error bug-fix training pair.
 
 Preferred bug category: {label}
 Slug                  : {slug}
@@ -50,13 +53,17 @@ Tier                  : {tier}
 Variant               : {variant_idx}
 
 Important:
-- Try to introduce exactly one realistic bug matching the preferred bug category.
+- Introduce exactly one realistic COMPILE-TIME bug matching the preferred bug category.
 - If that exact category does not fit this code naturally, introduce exactly one
-  different realistic AIE bug instead. Do NOT skip.
+    different realistic AIE compile-time bug instead. Do NOT skip.
 - Keep the same file markers and file layout.
-- Make the smallest source edit that creates the bug.
-- The buggy code may fail compile, deadlock, or produce wrong output; any of
-  those are valid if the defect is realistic.
+- Make the smallest source edit that creates an xchesscc/aiecompiler failure.
+- The buggy code MUST NOT compile. Semantic-only wrong-output bugs are rejected.
+- Prefer AIE-kernel-specific compile failures: wrong stream pointer/reference,
+    invalid readincr_v/writeincr_v lane count, aie::vector type/lane mismatch,
+    accumulator conversion error, missing aie_api include, invalid load_v/store_v,
+    input_buffer/output_buffer signature mismatch, unsupported AIE intrinsic, or
+    graph-to-kernel port type mismatch.
 - Do not add comments explaining the bug. Existing innocent comments may stay.
 - Do not use markdown fences. Return ONLY this XML block:
 
@@ -69,6 +76,15 @@ Correct project:
 {correct}
 </CORRECT>
 """
+
+
+INSTRUCTION_VARIANTS = [
+    "Fix the AIE compile error. Return a unified diff only.",
+    "Repair this AIE mini-project so it compiles. Return only the patch.",
+    "Find the xchesscc/AIE compiler issue and provide the minimal unified diff fix.",
+    "Correct the compile-time bug in this AIE code. Respond with a unified diff.",
+    "Patch this AIE project to resolve the compiler error. Return the diff only.",
+]
 
 
 def make_client(region: str):
@@ -206,6 +222,138 @@ def append_jsonl(path: Path, row: dict) -> None:
         fh.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
+def _workspace_relative(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(ROOT.resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def validate_buggy_project_wsl(code: str, *, wsl_distro: str, timeout_s: int) -> dict:
+    temp_dir = ROOT / "data" / "processed" / "v5" / ".bedrock_buggy_validate_tmp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    stem = f"candidate_{hashlib.sha1(code.encode('utf-8', errors='replace')).hexdigest()[:16]}_{int(time.time() * 1000)}"
+    input_path = temp_dir / f"{stem}.jsonl"
+    out_path = temp_dir / f"{stem}_results.jsonl"
+
+    input_row = {
+        "instruction": "Compile-check Bedrock generated buggy AIE mini-project.",
+        "context": "Buggy version:\n" + code.rstrip(),
+        "response": "",
+        "metadata": {"source": "bedrock_compile_bug_probe"},
+    }
+    input_path.write_text(json.dumps(input_row, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    cmd = [
+        "wsl",
+        "-d",
+        wsl_distro,
+        "--",
+        "bash",
+        "scripts/run_validate_wsl.sh",
+        "--input",
+        _workspace_relative(input_path),
+        "--out",
+        _workspace_relative(out_path),
+        "--scope",
+        "buggy",
+        "--target",
+        "AIE",
+        "--workers",
+        "1",
+        "--timeout",
+        str(timeout_s),
+        "--limit",
+        "1",
+    ]
+    try:
+        completed = subprocess.run(
+            cmd,
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            timeout=timeout_s + 240,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "compile_ok": False,
+            "error_class": "validation_timeout",
+            "return_code": -9,
+            "stdout_tail": (exc.stdout or "")[-2000:],
+            "stderr_tail": f"validation timeout after {timeout_s + 240}s\n{(exc.stderr or '')[-4000:]}",
+        }
+
+    if out_path.exists():
+        for line in out_path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                return json.loads(line)
+
+    return {
+        "compile_ok": False,
+        "error_class": "validation_driver_error",
+        "return_code": completed.returncode,
+        "stdout_tail": completed.stdout[-2000:],
+        "stderr_tail": completed.stderr[-4000:],
+    }
+
+
+def format_error_log(validation: dict) -> str:
+    stderr = str(validation.get("stderr_tail") or "").strip()
+    stdout = str(validation.get("stdout_tail") or "").strip()
+    error_class = str(validation.get("error_class") or "compile_error").strip()
+    text = stderr or stdout or error_class
+    lines = []
+    for line in text.splitlines():
+        stripped = line.rstrip()
+        if not stripped:
+            continue
+        lines.append(stripped)
+    if not lines:
+        lines = [error_class]
+    return "\n".join(lines[:80])
+
+
+def unified_diff_response(buggy: str, correct: str) -> str:
+    return "".join(difflib.unified_diff(
+        buggy.rstrip().splitlines(keepends=True),
+        correct.rstrip().splitlines(keepends=True),
+        fromfile="a/aie_source",
+        tofile="b/aie_source",
+        lineterm="",
+    )).rstrip() + "\n"
+
+
+def make_v5_row(row: dict, buggy: str, correct: str, validation: dict, model: str) -> dict:
+    source_id = str(row.get("source_id") or stable_source_id(row))
+    instruction = INSTRUCTION_VARIANTS[int(source_id[:8], 16) % len(INSTRUCTION_VARIANTS)]
+    return {
+        "instruction": instruction,
+        "context": buggy.rstrip() + "\n\n--- Error Log ---\n" + format_error_log(validation),
+        "response": unified_diff_response(buggy, correct),
+        "metadata": {
+            "variant": "v5_bedrock_compile_validated_correct_to_compile_error",
+            "split": "train" if (int(source_id, 16) % 100) >= 13 else "validation",
+            "group_id": f"bedrock_compile_bug:{source_id}",
+            "bug_type": "bedrock_compile_bug",
+            "bug_label": row.get("label"),
+            "source": "bedrock_compile_bug_from_compile_validated_correct",
+            "source_id": source_id,
+            "slug": row.get("slug"),
+            "tier": row.get("tier"),
+            "variant_idx": row.get("variant_idx"),
+            "model": model,
+            "synthetic": True,
+            "response_format": "unified_diff",
+            "has_real_error_log": True,
+            "correct_compile_ok": True,
+            "buggy_compile_ok": False,
+            "buggy_error_class": validation.get("error_class"),
+            "v5_bucket": "bedrock_compile_error_fix_pair",
+        },
+    }
+
+
 def make_prompt(row: dict) -> str:
     return MUTATION_TEMPLATE.format(
         label=row.get("label") or row.get("slug") or "AIE bug",
@@ -230,6 +378,13 @@ def main() -> None:
     parser.add_argument("--slugs", nargs="+")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--require-buggy-compile-fail", action="store_true",
+                        help="Validate each mutation with WSL and accept only rows where buggy code does not compile.")
+    parser.add_argument("--wsl-distro", default="Ubuntu-24.04")
+    parser.add_argument("--validate-timeout", type=int, default=60)
+    parser.add_argument("--v5-output", default=str(DEFAULT_V5_OUTPUT),
+                        help="Optional V5-format JSONL output for accepted compile-failing mutations.")
+    parser.add_argument("--no-v5-output", action="store_true", help="Do not write V5-format rows.")
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -244,6 +399,10 @@ def main() -> None:
     print(f"Jobs to run: {len(jobs)}")
     print(f"Workers: {args.workers}")
     print(f"Output: {output_path}")
+    if args.require_buggy_compile_fail:
+        print(f"Buggy validation: required compile failure via WSL distro {args.wsl_distro}")
+    if not args.no_v5_output:
+        print(f"V5 rows output: {Path(args.v5_output)}")
 
     if args.dry_run:
         if jobs:
@@ -300,17 +459,31 @@ def main() -> None:
             total_out += out_tok
             total_cost += cost
 
-        buggy, reasons = parse_buggy_project(text, str(row.get("correct") or ""))
+        correct = str(row.get("correct") or "")
+        buggy, reasons = parse_buggy_project(text, correct)
         parse_ok = buggy is not None
         full_code_ok = parse_ok and not reasons
+        buggy_validation = None
+        v5_written = False
+        if parse_ok and args.require_buggy_compile_fail:
+            buggy_validation = validate_buggy_project_wsl(
+                str(buggy),
+                wsl_distro=args.wsl_distro,
+                timeout_s=args.validate_timeout,
+            )
+            if buggy_validation.get("compile_ok") is True:
+                parse_ok = False
+                full_code_ok = False
+                reasons = list(reasons) + ["buggy_compiled_clean"]
+
         out_row = {
             "source_id": row["source_id"],
             "slug": row.get("slug"),
             "label": row.get("label"),
             "tier": row.get("tier"),
             "variant_idx": row.get("variant_idx"),
-            "buggy": buggy,
-            "correct": row.get("correct"),
+            "buggy": buggy if parse_ok else None,
+            "correct": correct,
             "preferred_bug_type": row.get("slug"),
             "preferred_bug_label": row.get("label"),
             "model": args.model,
@@ -323,12 +496,17 @@ def main() -> None:
             "full_code_ok": bool(full_code_ok),
             "full_code_reasons": {"buggy": reasons, "correct": []},
             "correct_compile_ok": True,
+            "buggy_compile_ok": None if buggy_validation is None else bool(buggy_validation.get("compile_ok")),
+            "buggy_compile_validation": buggy_validation,
             "mutation_source": "bedrock_compile_validated_correct",
         }
         if not parse_ok:
             out_row["raw_response"] = text[:8000]
         with write_lock:
             append_jsonl(output_path, out_row)
+            if parse_ok and buggy_validation is not None and not args.no_v5_output:
+                append_jsonl(Path(args.v5_output), make_v5_row(row, str(buggy), correct, buggy_validation, args.model))
+                v5_written = True
         return {
             "status": "ok" if parse_ok else "fail",
             "row": row,
@@ -336,6 +514,7 @@ def main() -> None:
             "in_tok": in_tok,
             "out_tok": out_tok,
             "cost": cost,
+            "v5_written": v5_written,
         }
 
     with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:

@@ -1,0 +1,62 @@
+Removing one unrelated kernel fixes others due to circular dependency in buffer allocation pressure
+Kernel works on AIE-ML but fails on AIE1 due to accumulator width differences
+Streaming multicast with asymmetric consumer rates where fast consumer starves slow consumer
+Functional behavior correct but VLIW slot violation from same-bank dual loads in one cycle
+Graph works at 1 GHz but fails at 1.25 GHz due to cascade timing closure
+DMA and kernel memory access conflict from missing synchronization
+Async buffer window_acquire/window_release mismatch causing use-after-release
+Packet-switched routing collision because graph exceeds streams-per-tile limits
+Compiler-inferred buffer placement crosses tile boundary due to large contiguous vector allocations
+int8 kernel arithmetic correct but saturation mode wrong (wrap vs saturate)
+4-tile systolic array has one cascade arriving one cycle late due to pipeline depth mismatch
+Kernel passes unit tests but fails integration due to hidden aligned(32) requirement
+Optimization level changes buffer placement and breaks assumed layout
+Two valid kernels co-located on one tile create hidden memory conflict
+Fractional runtime ratio rounded to 0 by scheduler so kernel never executes
+Stream merge FIFO depth too shallow causing unrelated deadlock via backpressure
+AXI4-Stream PL-AIE boundary missing TLAST so DMA never completes
+Kernel uses chess_protect() on wrong buffer and misses required fence
+Event trace debug calls consume a stream port and break production connectivity
+Multi-graph partition induces PLIO routing congestion
+Data-dependent loop count deadlocks when specific input pattern yields zero iterations
+Shared coefficient buffer between kernels is corrupted due to missing mutex
+aie::load_v<8> with unaligned pointer works in sim but faults on hardware
+Window margin configured in graph but kernel iteration ignores margin samples
+Kernel compiled with different ABI flags than graph causing signature mismatch
+Broadcast stream with one slow consumer stalls all branches via backpressure
+Tile DMA descriptor chain wraps to wrong address after first N transfers
+Kernel uses __restrict on buffers that alias in real topology
+Clock gating on idle tiles perturbs adjacent tile memory timing
+Recursive kernel function exceeds tile stack for large inputs
+Cross-graph physical routing congestion under inter-graph PLIO traffic
+Kernel correctness depends on compiler not reordering two adjacent stores - breaks at -O2 without volatile
+Graph topology valid but AIE router cannot satisfy both cascade and stream constraints simultaneously
+DMA burst length exceeds FIFO depth between PL and AIE - sporadic data loss under sustained load
+Two subgraphs share a PLIO clock domain but run at different graph rates - phase drift causes misalignment
+Kernel uses tile-local timer for profiling but timer wraps mid-frame - negative latency measurement causes assert
+Coefficient update via RTP races with kernel mid-computation - output corrupted for one frame per update
+Graph compiled with -profile flag adds extra stream reads that change token counts and deadlock production build
+Heterogeneous graph mixes AIE and HLS kernels with incompatible FIFO depths - backpressure deadlock at boundary
+Feature used that only exists on AIE-ML (bfloat16, acc64) silently breaks on AIE1
+Memory size assumption wrong - 32KB tile assumed but target is 64KB AIE-ML (or vice versa)
+Stream count per tile assumption wrong between architectures - too many streams routed
+Cascade interface width differs between architectures causing silent reinterpret
+Kernel meets timing at base frequency but fails at boosted frequency target
+Cascade path too long across array causing timing closure failure
+VLIW slot conflict - two memory operations from same bank scheduled in same cycle
+Software pipelining fails due to loop-carried dependency that compiler cannot break
+Throughput limited by memory bandwidth not compute - kernel cannot saturate MAC units
+Code compiles and runs but produces subtly wrong results due to integer type promotion rules
+Endianness assumption wrong - kernel reads bytes in opposite order from PL producer
+Insufficient memory at mapping time - aggregate tile budget exceeded across all kernels
+Cannot place kernel at mapping time - location constraints over-specified leaving no valid tile
+Routing congestion at routing time - too many stream crossings through one shim row
+Timing closure failure at implementation time - long combinational path through shim
+DMA error at runtime - descriptor chain underflows when consumer is faster than producer
+Lock timeout at runtime - producer kernel never released lock due to early return
+Bus error at runtime on hardware - unaligned vector access trap not seen in simulation
+Stack overflow at runtime - deep call chain triggered only by specific input pattern
+PLIO/GMIO clock rate mismatch with kernel processing rate - sporadic data corruption
+Bug only manifests when -profile flag adds trace stream that consumes one of the kernel's stream slots
+Bug only manifests at -O2 because -O0 inserts debug spills that hide an aliasing assumption
+Multi-graph design where one graph's idle DMA bursts perturb another graph's kernel cache lines

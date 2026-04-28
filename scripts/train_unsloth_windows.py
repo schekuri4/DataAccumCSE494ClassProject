@@ -12,8 +12,8 @@ from trl import SFTConfig, SFTTrainer
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TRAIN_PATH = ROOT / "data" / "processed" / "aie_instruction_train.jsonl"
-VALIDATION_PATH = ROOT / "data" / "processed" / "aie_instruction_validation.jsonl"
+TRAIN_PATH = ROOT / "data" / "processed" / "v4" / "aie_instruction_v4_train.jsonl"
+VALIDATION_PATH = ROOT / "data" / "processed" / "v4" / "aie_instruction_v4_validation.jsonl"
 DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
 SYSTEM_PROMPT = (
     "You are an expert AMD/Xilinx Versal AIE and HLS coding assistant. "

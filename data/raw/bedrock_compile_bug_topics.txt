@@ -1,0 +1,814 @@
+TYPE MISMATCH ERRORS
+aie::vector element type mismatch in arithmetic - multiplying int16 vector with int32 vector directly
+aie::accum lane count mismatch - acc48 accumulator with wrong number of lanes for element type
+input_stream element type differs from kernel parameter type - stream<int16> connected to stream<int32> kernel
+input_window element type differs from adf::connect window type - window<int16> kernel with window<int32> connect
+output_buffer element type declared as int16 but kernel writes int32 values
+input_buffer and output_buffer element types differ when kernel expects them to match
+aie::mac called with accumulator type incompatible with input vector element types
+aie::mul result assigned to accumulator of wrong precision - acc48 for float input
+aie::srs shift applied to acc80 but result assigned to int16 vector - precision mismatch
+aie::vector<cint16> arithmetic mixed with aie::vector<int16> without explicit conversion
+aie::accum<cacc48,N> used in real-valued kernel where aie::accum<acc48,N> required
+output_stream element type mismatch - kernel writes cint16 but stream declared as int16
+buffer_in element type float used in aie::load_v<int16> - incompatible load type
+aie::broadcast<int32,16> assigned to aie::vector<int16,16> - scalar type mismatch
+aie::concat on vectors of different element types - int16 and int32 concatenated
+
+VECTOR LANE COUNT ERRORS
+aie::vector<int16,12> - lane count 12 is not a power of two
+aie::vector<int16,32> exceeds maximum supported lane count for int16 on AIE core
+aie::accum<acc48,7> - lane count 7 not a valid power-of-two lane count
+aie::mul on vectors of different lane counts - 16-lane and 8-lane vectors mixed
+aie::mac accumulator lane count does not match input vector lane count
+readincr_v<7>(stream) - non-power-of-two lane count for stream read
+writeincr_v<3>(stream, vec) - invalid lane count in stream write intrinsic
+aie::load_v<12>(ptr) - non-power-of-two count in load_v
+aie::store_v(ptr, vec) where pointer alignment does not match vector lane width
+aie::extract<8>(vec, 1) on aie::vector<int16,16> - extract size equals half width but index out of range
+aie::concat of two vectors produces lane count exceeding maximum for type
+aie::sliding_mul lane count inconsistent with accumulator lane count
+aie::begin_vector<3>(buf) - non-power-of-two lane count in begin_vector
+aie::zeros<acc48,12>() - invalid lane count 12 for acc48 accumulator
+aie::broadcast<int16,0>() - zero lane count for broadcast
+
+MISSING INCLUDE ERRORS
+#include <aie_api/aie.hpp> missing in kernels/*.cc but aie:: namespace used
+#include <aie_api/aie_adf.hpp> missing but readincr and writeincr used in kernel
+#include <adf.h> missing in graph.h but adf::graph class declared
+aie::vector type used in kernel without #include <aie_api/aie.hpp>
+aie::accum type used without the aie_api header included
+input_buffer and output_buffer used without #include <aie_api/aie.hpp>
+readincr_v called in kernel that only includes <adf.h> not <aie_api/aie_adf.hpp>
+aie::load_v and aie::store_v used without aie_api header
+chess_prepare_for_pipelining pragma used without required AIE toolchain include
+aie::mac used in kernel missing both aie_api headers
+adf::source assignment in graph.h but adf.h include is missing from graph.h
+adf::connect used in graph.h without the adf.h header
+adf::runtime<adf::ratio> missing because graph.h forgot to include adf.h
+aie::sliding_mul_sym called but aie_api header not included
+kernel uses int16 AIE scalar type but no include defines it
+
+WRONG INCLUDE PLACEMENT ERRORS
+graph.h includes kernels/mykernel.cc directly instead of using adf::source()
+graph.h includes <aie_api/aie.hpp> which belongs only in kernel .cc files
+kernel .cc includes another kernel .cc directly instead of declaring functions extern
+graph.h includes a kernel header that itself includes <aie_api/aie.hpp>
+kernel .cc does not include <aie_api/aie.hpp> but does include <adf.h> and uses aie:: types
+graph.h includes both <adf.h> and <aie_api/aie_adf.hpp> causing symbol conflicts
+kernel .cc defines a global adf::graph object which belongs only in a graph file
+#include guard missing causes double inclusion of graph.h when two files include it
+
+WRONG API SIGNATURE ERRORS
+input_stream<T>& used as kernel parameter instead of input_stream<T>* (reference not pointer)
+output_stream<T>& used as kernel parameter instead of output_stream<T>* (reference not pointer)
+adf::kernel::create<mykernel>() - templated create form rejected by adf compiler
+adf::kernel::create<0>(mykernel) - zero-indexed template create form rejected
+acc.to_vector<int16>() called with no shift argument - shift is required
+aie::zeros<int16,16>() uses element type instead of accumulator type for zeros
+aie::zeros() called without any template arguments
+aie::begin_vector<N>(stream_ptr) on an input stream pointer - only valid on buffers
+aie::reduce_add called on an accumulator instead of a vector
+readincr_v used without template argument N to specify lane count
+writeincr_v used without template argument N to specify lane count
+aie::mac called with three scalar arguments instead of accumulator plus two vectors
+aie::mul(vec_a, vec_b, offset) - extra offset argument in mul signature
+aie::load_v<N> called on output_buffer instead of input_buffer
+aie::store_v called on input_buffer instead of output_buffer
+
+UNQUALIFIED ADF NAME ERRORS
+connect<stream>(...) without adf:: prefix in graph class
+input_plio::create(...) without adf:: prefix in graph constructor
+output_plio::create(...) without adf:: prefix in graph constructor
+kernel::create(mykernel) without adf:: prefix in graph constructor
+source(k) = "kernels/foo.cc" without adf:: prefix
+runtime<ratio>(k, 0.5) without adf:: prefix
+plio_32_bits used as connect type without adf:: qualification
+window<512> in connect template without adf:: prefix
+stream in connect template without adf:: prefix
+graph class inherits public graph without adf:: prefix - should be adf::graph
+connect<adf::window<256>>(k.in, plio.out) where plio is not adf:: qualified
+adf::kernel member declared as kernel k without adf:: prefix
+
+MISSING FORWARD DECLARATION ERRORS
+Kernel function used in adf::kernel::create without forward declaration in graph.h
+void mykernel(...) defined in kernels/foo.cc but not declared before adf::kernel::create call
+Kernel function with template parameters not declared before use in adf::kernel::create
+Second kernel function in same file not forward-declared before first use
+Overloaded kernel function - wrong overload selected because declaration order wrong
+Forward declaration signature does not match definition - parameter types differ
+Forward declaration uses input_window but definition uses input_buffer - signature mismatch
+Forward declaration uses input_stream<int16>* but definition uses input_stream<int32>* - type mismatch
+Forward declaration missing const qualifier that definition has
+Forward declaration has wrong number of parameters compared to kernel definition
+
+GRAPH CONNECT TYPE MISMATCH ERRORS
+adf::connect<adf::stream> used but kernel parameter is input_window - port type mismatch
+adf::connect<adf::window<512>> used but kernel parameter is input_stream - port type mismatch
+adf::connect<adf::window<256>> connects to output_buffer kernel parameter - wrong buffer type
+Stream connect used for kernel that has input_buffer parameter - should be window connect
+PLIO declared as adf::plio_64_bits but connected kernel reads 32-bit stream chunks
+adf::connect<adf::window<256>> window size in bytes does not match sizeof(T) * N used in kernel
+adf::window byte size is odd number - not a multiple of element size
+Input PLIO 32-bit width but kernel readincr_v<8> expects 64-bit per cycle throughput
+Two kernels connected with adf::connect but output kernel uses stream and input uses window
+adf::connect<adf::stream> connecting two window-based kernels
+
+MISSING GRAPH ELEMENT ERRORS
+adf::runtime<adf::ratio> not set for a kernel - ratio undefined compile error
+adf::source() not set for kernel - source file not specified
+adf::kernel member not initialized via adf::kernel::create in constructor
+Input PLIO declared but never connected to kernel input port
+Output PLIO declared but never driven from kernel output port
+Graph class missing global instance declaration after class closing brace
+Graph constructor missing adf::Graph base constructor call
+adf::kernel::create called with wrong number of arguments for kernel signature
+Graph port adf::port<adf::direction::in> declared but never bound to anything
+adf::connect destination port index out of range for kernel argument count
+
+CONSTEXPR AND TEMPLATE PARAMETER ERRORS
+Template non-type parameter for window size evaluates to zero at compile time
+Template parameter WINDOW_BYTES computed as N * sizeof(T) but N is wrong causing zero
+Constexpr buffer size expression overflows int32 at compile time
+Static_assert(false, "not implemented") triggered by unsupported template specialization
+Template parameter for vector lane count passed as odd number failing static assert
+adf::window<0> - zero byte window size in connect template argument
+adf::plio width template argument not one of 32, 64, or 128
+Template parameter for PLIO width passed as 16 - not a valid plio width
+Non-type template parameter value negative - used as array size or window size
+Template recursion depth exceeded - constexpr function recursive with large input
+
+NAMESPACE AND SCOPE ERRORS
+adf:: member accessed at file scope outside any class or function
+Using namespace adf inside graph.h causes ambiguous adf::connect vs connect
+Kernel function defined in adf namespace conflicting with adf library symbols
+Global graph instance declared inside a namespace but adf expects global scope
+adf::graph derived class defined inside anonymous namespace causing linkage error
+adf::port used as local variable type inside a function - not valid outside class
+Kernel forward declaration in wrong namespace - global ns but definition in adf ns
+Two kernels with same function name in different files cause duplicate symbol link error
+Graph class member with same name as adf:: built-in causing ambiguous lookup
+Type alias conflicts with adf type name causing compilation failure
+
+PLIO AND PORT TYPE ERRORS
+adf::input_plio used as output - direction mismatch
+adf::output_plio used as input - direction mismatch
+adf::plio_128_bits used but AIE platform only supports plio_32_bits or plio_64_bits
+PLIO data file path in adf::input_plio::create has wrong extension - not .txt or .csv
+Same PLIO name string used for two different PLIOs causing name collision
+adf::connect goes from output_plio to kernel input instead of input_plio to kernel input
+adf::connect goes from kernel output to input_plio instead of to output_plio
+Port index 1 specified in connect but kernel only has one output port (index 0)
+adf::port<adf::direction::inout> used where adf::port<adf::direction::in> required
+Two adf::connect calls both drive the same kernel input port - multiple drivers
+
+BUFFER AND WINDOW SIZE ERRORS
+input_buffer<int16> kernel reads more elements than window size allows
+adf::window<128> but kernel loop iterates 128 times reading int32 (needs 512 bytes)
+adf::window<256> connect but kernel output_buffer writes 256 int32 samples needing 1024 bytes
+Buffer size in kernel exceeds tile local memory limit causing allocation failure
+input_window<int16> size not a multiple of vector size causing misaligned final iteration
+Window size set to number of samples instead of bytes - off by sizeof(T) factor
+Ping-pong buffer allocated twice the needed size causing memory overflow
+Output buffer size mismatch between kernel declaration and graph connect size
+adf::window<0> used in actual connect - zero-size window
+input_buffer<float,extents<N>> where N is not a compile-time constant
+
+AIE API TYPE AND TEMPLATE ERRORS
+aie::load_v<N> called with template N omitted from the call
+aie::store_v called with template parameter on function name even though it is inferred from vector
+aie::vector declared with bool element type which is not supported by AIE vector API
+aie::vector declared with double element type which is not supported on AIE vector units
+aie::vector declared with long long element type instead of int64 or uint64 AIE aliases
+aie::accum declared with unsupported tag acc32 instead of acc48 or acc80
+aie::accum declared with unsupported tag cacc80 for real-valued vectors
+aie::accum template arguments reversed - lane count passed before accumulator tag
+aie::broadcast template arguments reversed - lane count passed before element type
+aie::zeros template arguments reversed - lane count passed before accumulator tag
+aie::sliding_mul template arity wrong - too few template arguments supplied
+aie::sliding_mul template arity wrong - too many template arguments supplied
+aie::sliding_mul called with coefficient vector type not matching data vector type
+aie::sliding_mac called with accumulator lane count incompatible with vector lanes
+aie::interleave_zip called with vectors of different lane count
+aie::interleave_unzip called with vectors of different element type
+aie::shuffle_down called with shift amount that is not a compile-time constant
+aie::shuffle_up called with negative shift amount in template expression
+aie::extract called with runtime size instead of template constant size
+aie::insert called with vector chunk whose lane count does not divide destination lane count
+aie::set_sat called with invalid saturation mode enum value
+aie::set_rounding called with invalid rounding mode enum value
+aie::abs called on complex vector type where overload is unavailable
+aie::min called with accumulator values instead of vectors
+aie::max called with vectors of different signedness
+aie::add used on accumulators even though API requires vector arithmetic or mac path
+aie::sub called with scalar and vector without broadcasting scalar first
+aie::filter_even called on vector type that has no such operation
+aie::filter_odd called with output lane count larger than input lane count
+aie::unpack called on vector element type that cannot be unpacked
+aie::pack called on accumulator instead of vector
+
+STREAM INTRINSIC COMPILE ERRORS
+readincr called with output_stream pointer instead of input_stream pointer
+writeincr called with input_stream pointer instead of output_stream pointer
+readincr_v<N> called with scalar destination variable instead of vector destination
+writeincr_v<N> called with scalar value but vector write intrinsic selected
+readincr_v<N> return assigned to vector with different lane count
+writeincr_v<N> passed vector whose lane count differs from N
+readincr_v<N> called on stream with element type not matching vector element type
+writeincr_v<N> called on output stream with mismatched stream element type
+readincr called with stream object instead of stream pointer
+writeincr called with dereferenced stream value instead of stream pointer
+readincr used in graph.h instead of inside kernel source
+writeincr used in graph.h instead of inside kernel source
+readincr_v used without including aie_adf stream intrinsic declarations
+writeincr_v used without including aie_adf stream intrinsic declarations
+readincr called with extra boolean TLAST argument unsupported by AIE stream API
+writeincr called with missing value argument
+writeincr called with arguments reversed - value before stream pointer
+readincr called with two arguments instead of one
+stream kernel parameter declared const input_stream<T>* preventing readincr mutation
+output_stream<T>* parameter declared const preventing writeincr
+
+BUFFER ITERATOR COMPILE ERRORS
+aie::begin called on raw pointer instead of input_buffer or output_buffer
+aie::end called on raw pointer instead of buffer object
+aie::begin_vector<N> called on raw pointer instead of buffer object
+aie::begin_vector<N> called on const output_buffer reference
+aie::store_v called on const iterator from input buffer
+aie::load_v called on output-only buffer iterator before it is initialized
+Iterator increment uses += vector lane count on scalar iterator type that does not support it
+Iterator dereference assigned vector value but iterator element type is scalar
+input_buffer passed by value instead of reference in kernel signature
+output_buffer passed by value instead of reference in kernel signature
+input_buffer<T>& marked non-const when API expects const input_buffer<T>& for read-only buffers
+output_buffer<T>& marked const so writes fail at compile time
+input_buffer declared with two template parameters in unsupported form
+output_buffer declared with extents expression that is not constexpr
+aie::begin_vector<N> lane count larger than buffer extent
+aie::begin_circular called on non-circular buffer type
+aie::end_vector<N> used although no such helper exists
+aie::load_v<N> result stored into pointer instead of aie::vector
+aie::store_v pointer argument and vector argument reversed
+Buffer iterator type explicitly named incorrectly instead of using auto
+
+GRAPH CLASS DECLARATION ERRORS
+Graph class declared without public inheritance from adf::graph
+Graph class inherits from adf::kernel instead of adf::graph
+Graph constructor declared private so global instance cannot be constructed
+Graph constructor name does not match class name
+Graph class missing semicolon after closing brace
+Graph class declared as template but global instance omits template arguments
+Graph member adf::kernel declared inside constructor local scope instead of class scope
+Graph member PLIO declared inside constructor local scope then used outside scope
+Graph class has copy constructor deleted accidentally by noncopyable adf members
+Global graph object declared before graph class definition is complete
+Global graph instance uses wrong class name due to typo
+Two global graph instances have the same symbol name
+Graph class contains static adf::kernel member causing invalid construction
+Graph constructor initializer tries to initialize adf::kernel before create call
+Graph graph() constructor written with lowercase name and treated as method
+Graph class inside function local scope causing illegal global object generation
+Graph class has pure virtual method accidentally declared, making it abstract
+Graph constructor has required argument but global instance constructed with no arguments
+Graph derives from multiple graph bases causing ambiguous adf::graph base
+Graph class forward-declared but never fully defined before global instance
+
+ADF CONNECT SYNTAX ERRORS
+adf::connect called with missing template argument for stream or window type
+adf::connect<adf::stream>() called with no source and destination ports
+adf::connect<adf::stream>(src) called with only one endpoint
+adf::connect<adf::window<512>>(src, dst, extra) called with extra endpoint
+adf::connect<adf::window<N>> where N is a runtime variable not constexpr
+adf::connect<adf::window<-256>> negative window size in template argument
+adf::connect<adf::window<3.14>> floating-point window size template argument
+adf::connect<adf::stream<int16>> uses typed stream template instead of adf::stream tag
+adf::connect<adf::packetstream> used without packet stream support or include
+adf::connect<adf::cascade> used between non-cascade kernel ports
+adf::connect called with kernel object instead of kernel port member
+adf::connect called with PLIO object instead of PLIO .out or .in port
+adf::connect from input PLIO .in instead of .out
+adf::connect to output PLIO .out instead of .in
+adf::connect between two input ports
+adf::connect between two output ports
+adf::connect uses k.in[1] but kernel has only one input parameter
+adf::connect uses k.out[2] but kernel has only one output parameter
+adf::connect window size omits closing angle bracket causing parser failure
+adf::connect stream tag misspelled as adf::streams
+
+KERNEL SIGNATURE ERRORS
+Kernel function returns int instead of void
+Kernel function is declared static causing adf::kernel::create symbol lookup failure
+Kernel function is overloaded with same name causing ambiguous kernel create
+Kernel function is templated but adf::kernel::create receives unspecialized template
+Kernel function takes std::vector parameter which cannot be used in AIE kernel signature
+Kernel function takes reference to input_stream pointer instead of pointer
+Kernel function takes pointer to input_buffer instead of reference
+Kernel function takes array parameter with runtime bound in signature
+Kernel function takes C++ class object parameter not supported by graph connection
+Kernel function parameter order differs from graph connect order causing port type conflict
+Kernel function has default arguments in declaration but definition omits them inconsistently
+Kernel declaration marked extern C but definition has C++ linkage
+Kernel declaration has noexcept but definition does not match
+Kernel declaration has const pointer parameter but definition has non-const pointer
+Kernel function placed in anonymous namespace hiding symbol from graph compiler
+Kernel function declared inline in graph.h and also defined in .cc causing duplicate definition
+Kernel source defines function with different name than graph.h forward declaration
+Kernel source file path in adf::source points to file that does not contain the kernel
+Kernel has too many parameters for connected graph ports
+Kernel has fewer parameters than graph connect statements assume
+
+SOURCE PATH AND FILE MARKER ERRORS
+adf::source points to kernels/foo.cpp but file marker emits kernels/foo.cc
+adf::source points to kernels/foo.cc but generated file marker is foo.cc at root
+adf::source string missing kernels/ prefix for generated kernel file
+adf::source string has Windows backslashes which are not resolved by WSL path logic
+adf::source string has leading ./ that does not match materialized project path
+adf::source string has uppercase file extension .CC while emitted marker uses .cc
+adf::source string references stale file after kernel function was renamed
+Two adf::source assignments target same kernel object causing duplicate source setting
+adf::source assignment missing semicolon after source string
+adf::source called before kernel object is created
+File marker names graph.hpp but graph compiler expects graph.h for generated project
+File marker emits kernels/foo.h but adf::source references kernels/foo.cc
+Kernel file marker missing kernels/ directory but graph uses kernels/ path
+Duplicate // FILE: kernels/foo.cc markers produce duplicate symbol definitions
+Graph.h marker appears after kernel marker causing declarations unavailable when expected
+
+INCLUDE RESOLUTION AND HEADER ERRORS
+Local include quotes reference missing kernel header file
+Local include path uses wrong relative directory from graph.h
+Local include path has case mismatch between include and file marker
+Header declares kernel function but definition uses different namespace
+Header declares input_stream as reference while source definition uses pointer
+Header declares vector lane count different from kernel source definition
+Header included twice without guard causing duplicate global graph instance
+Header guard macro typo causes guard not to close before class definition
+Header guard starts but missing #endif at end of graph.h
+#include directive missing closing quote for local header
+#include directive missing closing angle bracket for system header
+#include <aie_api/aie_adf.h> wrong extension instead of aie_adf.hpp
+#include <aie_api/aie.h> wrong extension instead of aie.hpp
+#include <adf.hpp> wrong header name instead of <adf.h>
+#include "kernels/foo.cc" causes duplicate function body when adf::source also compiles file
+
+MACRO AND PRAGMA COMPILE ERRORS
+chess_prepare_for_pipelining written with parentheses causing macro parse error
+chess_prepare_for_pipelining placed outside loop body where pragma is invalid
+chess_loop_range called with nonconstant min or max expression
+chess_loop_range min greater than max triggering compile diagnostic
+chess_unroll_loop applied to while loop where only for-loop supported
+#pragma clang loop used in AIE kernel where compiler rejects unsupported pragma
+Macro defines kernel function name to another token causing adf::kernel::create lookup failure
+Macro for vector lane count expands to string literal instead of integer
+Macro for window bytes missing parentheses causing invalid template expression
+Macro uses trailing semicolon inside template argument expression
+Preprocessor conditional excludes kernel function definition in AIE build
+Preprocessor conditional excludes graph class when __AIEARCH__ not defined
+Macro redefines int16 alias causing conflict with AIE scalar typedef
+Macro named stream conflicts with adf::stream template tag
+Macro named window conflicts with adf::window template tag
+
+CONST AND VOLATILE QUALIFIER ERRORS
+Kernel writes through pointer declared const int16*
+Kernel reads from volatile aie::vector where overload expects nonvolatile vector
+input_buffer reference marked volatile causing aie::begin overload resolution failure
+output_buffer reference marked const volatile causing store_v failure
+readincr called on const input_stream pointer
+writeincr called on const output_stream pointer
+Vector variable declared const then assigned result of aie::mac conversion
+Accumulator declared const then updated inside loop
+Coefficient array declared volatile but aie::load_v expects normal pointer
+Global constexpr vector object declared using non-literal aie::vector type
+
+ARRAY AND POINTER COMPILE ERRORS
+Stack array size uses runtime input parameter in AIE kernel
+Stack array too large for AIE local memory triggering compiler allocation error
+Array initialized with too many coefficient elements
+Array initialized with too few elements for explicit bound and used in constexpr context
+Pointer arithmetic performed on input_buffer object instead of iterator
+Pointer assigned from aie::vector object by mistake
+aie::vector assigned from raw pointer without aie::load_v
+Raw pointer passed where aie::vector expected by aie::mac
+Nullptr passed to aie::load_v in constexpr path causing compiler diagnostic
+Array bound computed from negative template value
+Two-dimensional array passed to aie::load_v where flat pointer expected
+Coefficient pointer declared as float* but aie::load_v<int16> expects int16 pointer
+Pointer cast from int16* to cint16* violates required alignment and fails compile checks
+Address-of operator applied to input_stream pointer then passed to readincr
+Dereferenced output_stream used as left-hand assignment target instead of writeincr
+
+CASCADE AND PACKET STREAM ERRORS
+input_cascade parameter used without cascade connect in graph
+output_cascade parameter connected with adf::stream instead of cascade connection
+Cascade accumulator type differs between producer and consumer kernels
+Cascade input and output lane count mismatch across connected kernels
+Cascade kernel forward declaration missing cascade parameter type include
+adf::connect<adf::cascade> used on normal stream kernel ports
+Packet stream API used with normal input_stream pointer type
+Packet header read function used without packet stream include or port type
+Packet stream kernel connected to PLIO stream without packetstream tag
+Packet ID template parameter not constexpr in packet connect
+Packet split graph node declared but packetmerge include missing
+Packet stream output connected to window input port
+
+GMIO AND PLIO API ERRORS
+adf::input_gmio::create called with PLIO arguments instead of GMIO arguments
+adf::output_gmio::create called with plio_32_bits enum instead of GMIO depth
+GMIO object connected with PLIO .out member that does not exist
+PLIO object used with gmio-specific memory depth parameter
+adf::connect<adf::stream> from GMIO to window-based kernel
+GMIO name string reused for both input and output causing duplicate graph object names
+GMIO constructor missing required logical name argument
+PLIO constructor missing data file path argument
+adf::input_plio::create called with numeric width instead of adf::plio_32_bits enum
+adf::output_plio::create called with string width instead of adf::plio enum
+PLIO data file argument omitted entirely
+PLIO width enum passed as third argument instead of second argument
+GMIO depth argument passed as floating point value instead of integer
+GMIO connected directly to output_gmio with no kernel between endpoints
+
+RTP AND PARAMETER PORT ERRORS
+adf::parameter declared but never connected to kernel runtime parameter
+RTP update port connected to stream kernel data input port
+Kernel function expects scalar RTP parameter but graph connects stream to that parameter
+Kernel function expects pointer RTP parameter but declaration uses scalar value
+adf::connect<adf::parameter> missing for kernel runtime parameter
+adf::connect<adf::parameter> used between two data ports
+Runtime parameter type differs between declaration and kernel definition
+RTP array size not constexpr in kernel signature
+RTP parameter placed before stream data ports but graph connects it as last port
+RTP port index in graph exceeds number of kernel parameters
+adf::async parameter update API used without async RTP declaration
+RTP input declared const but kernel writes to it
+RTP output parameter connected as input parameter
+RTP parameter default value uses non-literal aie::vector type
+
+STANDARD LIBRARY UNSUPPORTED ERRORS
+std::vector used inside AIE kernel body requiring unsupported dynamic allocation
+std::array header not included but std::array used for coefficients
+std::complex used in kernel instead of cint16 or cfloat AIE types
+std::sin called in kernel body without math library support for target
+std::memcpy called on aie::vector object without including cstring and unsupported overload
+std::min used without including algorithm in kernel source
+std::clamp used with AIE scalar types without including algorithm
+std::optional used in kernel source causing unsupported C++ library dependency
+new operator used in AIE kernel body causing compile rejection
+delete operator used in AIE kernel body causing compile rejection
+throw statement used in AIE kernel body causing exception support error
+try catch block used in AIE kernel body causing exception support error
+virtual function call used in kernel causing unsupported runtime dispatch
+lambda capturing stream pointer used as kernel helper causing compiler rejection
+std::function used inside kernel causing unsupported library dependency
+
+AIE KERNEL VECTOR CONSTRUCTION ERRORS
+aie::vector<int16,16> constructed from scalar int16 without broadcast helper
+aie::vector<int16,16> initialized with brace list of only eight elements
+aie::vector<int16,16> initialized with brace list of seventeen elements
+aie::vector<cint16,8> initialized with int16 scalar literals instead of complex pairs
+aie::vector<float,8> initialized from int16 pointer without load_v conversion
+aie::vector<int32,8> default constructed then indexed with operator[] unsupported in constexpr context
+aie::vector<int16,16> assigned from aie::accum<acc48,16> without srs or to_vector
+aie::vector<int16,16> assigned from aie::vector<uint16,16> without explicit cast support
+aie::vector<int16,16> declared with runtime lane count macro value from function parameter
+aie::vector<int16,16> used as non-type template parameter to helper function
+aie::vector<int16,16> returned by kernel entry function instead of writing to stream or buffer
+aie::vector<int16,16> passed by non-const reference to helper that expects scalar pointer
+aie::vector<int16,16> pointer allocated with new inside kernel body
+aie::vector<int16,16>* used as stream element type in input_stream
+aie::vector<int16,16> stored in static local variable inside kernel body
+aie::vector<int16,16> declared volatile causing missing operator overloads
+aie::vector<int16,16> compared with == in an if statement causing vector bool conversion error
+aie::vector<int16,16> used as array bound expression
+aie::vector<int16,16> passed to std::abs instead of AIE vector abs API
+aie::vector<int16,16> reinterpret_cast to incompatible aie::vector<float,8>
+
+AIE KERNEL ACCUMULATOR CONVERSION ERRORS
+aie::accum<acc48,16> assigned directly to output_buffer<int16> element
+aie::accum<acc48,16> initialized from scalar zero instead of aie::zeros<acc48,16>()
+aie::accum<acc80,8> initialized from aie::zeros<acc48,8>() with wrong accumulator tag
+aie::accum<cacc48,8> used with aie::mac on real int16 vectors
+aie::accum<acc48,16> to_vector<int16>(shift) assigned to aie::vector<int32,16>
+aie::accum<acc48,16> to_vector<float>(shift) requested on integer accumulator
+aie::accum<acc48,16> updated with aie::mul result instead of aie::mac accumulator result
+aie::accum<acc48,16> lane count differs from srs output vector lane count
+aie::srs called with vector argument instead of accumulator argument
+aie::srs called with runtime shift variable where immediate integer is required
+aie::srs result stored in accumulator instead of vector
+aie::mac result assigned to aie::vector without conversion
+aie::mac called with accumulator and one vector only missing second vector argument
+aie::mac called with accumulator and scalar coefficient pointer instead of loaded vector
+aie::mac called with accumulator tag acc48 instead of accumulator object
+aie::mul result assigned to aie::accum<cacc48,8> with real operands
+aie::mul result assigned to scalar int32 instead of vector or accumulator result
+Accumulator array declared with runtime size inside kernel
+Accumulator object declared static inside kernel entry function
+Accumulator passed by value to helper then expected to update caller state
+
+AIE KERNEL LOAD STORE INTRINSIC ERRORS
+aie::load_v<16>(ptr) called where ptr is not aligned to int16 vector boundary
+aie::load_v<16>(ptr + 1) creates misaligned vector load on int16 data
+aie::load_v<8>(float_ptr) assigned to aie::vector<int16,8>
+aie::load_v<16>(int16_ptr) assigned to aie::vector<int32,16>
+aie::load_v<16>(const output pointer) attempts to load from write-only output data
+aie::load_v<16>(&scalar) loads sixteen lanes from single scalar address
+aie::load_v<0>(ptr) uses zero lane count
+aie::load_v<-8>(ptr) uses negative lane count expression
+aie::store_v(ptr, scalar) passed scalar instead of vector
+aie::store_v(vec, ptr) arguments reversed
+aie::store_v(const_ptr, vec) attempts write through const pointer
+aie::store_v(ptr + 1, vec) creates misaligned vector store
+aie::store_v output pointer type int16* receives aie::vector<int32,8>
+aie::store_v called with temporary pointer from input_buffer begin iterator
+aie::store_v called on pointer to input data marked const
+aie::load_v called on pointer returned by aie::begin_vector iterator rather than scalar iterator
+aie::store_v called inside graph constructor instead of kernel body
+aie::load_v called with pointer to stream object instead of memory pointer
+aie::load_v template count larger than remaining buffer extent in statically checked loop
+aie::store_v template count does not match vector lane count argument
+
+AIE KERNEL STREAM VECTORIZATION ERRORS
+readincr_v<16> result assigned to aie::vector<int16,8>
+readincr_v<8> result assigned to aie::vector<int32,8> from input_stream<int16>
+writeincr_v<16> writes aie::vector<int16,8> to output_stream<int16>
+writeincr_v<8> writes aie::vector<int32,8> to output_stream<int16>
+readincr_v<16> used on input_stream<cint16>* but assigned to aie::vector<int16,16>
+writeincr_v<8> used on output_stream<cint16>* with aie::vector<int16,8>
+readincr_v<32> on int32 stream exceeds supported vector width for AIE target
+writeincr_v<32> on int32 stream exceeds supported vector width for AIE target
+readincr_v<1> used where scalar readincr overload should be used
+writeincr_v<1> used where scalar writeincr overload should be used
+readincr_v<N> uses constexpr N defined after the call site
+writeincr_v<N> uses macro N that expands to parenthesized expression with semicolon
+readincr_v<16> called in helper function whose stream pointer type is void*
+writeincr_v<16> called with output_stream<void>*
+input_stream<aie::vector<int16,16>> used instead of input_stream<int16>
+output_stream<aie::vector<int16,16>> used instead of output_stream<int16>
+Stream parameter declared input_stream<int16> in kernel signature instead of input_stream<int16>*
+Stream parameter declared output_stream<int16> in kernel signature instead of output_stream<int16>*
+Stream pointer copied into integer variable before readincr call
+Stream pointer arithmetic performed before readincr call
+
+AIE KERNEL BUFFER API SIGNATURE ERRORS
+Kernel signature uses input_buffer<int16>* instead of input_buffer<int16>&
+Kernel signature uses output_buffer<int16>* instead of output_buffer<int16>&
+Kernel signature uses const output_buffer<int16>& for output parameter
+Kernel signature uses input_buffer<int16>&& rvalue reference
+Kernel signature uses output_buffer<int16>&& rvalue reference
+Kernel signature uses input_buffer<int16, 256>& with unsupported second template argument
+Kernel signature uses output_buffer<int16, adf::extents<256>>& without correct namespace or include
+Kernel signature mixes input_window and input_buffer in same declaration for same port
+input_buffer<int16>& passed to helper expecting int16* without calling begin
+output_buffer<int16>& passed to aie::store_v directly instead of iterator or pointer
+aie::begin_vector<16>(output_buffer) used to read output before writing
+aie::begin(input_buffer) iterator assigned to raw int16* variable
+aie::begin(output_buffer) iterator assigned to const int16* variable then written
+aie::end(input_buffer) result subtracted from raw pointer with incompatible iterator type
+input_buffer extent specified by non-constexpr function return value
+output_buffer extent specified using runtime RTP parameter
+input_buffer with dynamic_extent used where static extent required by validator
+output_buffer template includes negative extent expression
+input_buffer type alias missing typename in templated helper
+output_buffer helper template missing dependent template keyword
+
+AIE KERNEL WINDOW API LEGACY ERRORS
+input_window<int16>* used without including legacy window declarations
+output_window<int16>* used without including legacy window declarations
+window_readincr called on input_buffer instead of input_window pointer
+window_writeincr called on output_buffer instead of output_window pointer
+window_readincr_v<16> assigned to vector with different lane count
+window_writeincr_v<16> passed scalar value instead of vector
+window_incr called with byte count instead of sample count when overload expects samples
+window_decr called on output_window pointer where only input movement intended
+window_readincr called with extra pointer argument
+window_writeincr called with arguments reversed
+input_window parameter declared by reference instead of pointer
+output_window parameter declared by reference instead of pointer
+input_window<cint16>* connected to window of int16 samples in graph
+output_window<int32>* connected to window byte size for int16 samples
+Window API mixed with input_buffer API in the same kernel signature
+
+AIE KERNEL COMPLEX TYPE COMPILE ERRORS
+cint16 variable initialized from single int16 scalar literal
+cint32 variable initialized from cint16 without explicit conversion
+cfloat variable initialized from int16 pair without proper complex literal syntax
+aie::vector<cint16,8> loaded from int16* instead of cint16*
+aie::vector<int16,16> loaded from cint16* causing element type mismatch
+Complex vector multiplied by real vector without selecting supported overload
+cacc48 accumulator used with int16 vector inputs instead of cint16 inputs
+acc48 accumulator used with cint16 vector inputs instead of cacc48
+writeincr called on output_stream<cint16>* with int16 scalar
+readincr called on input_stream<int16>* assigned to cint16 variable
+real() helper called on cint16 without including or supporting that helper
+imag() helper called on cint16 without supported overload
+cint16 struct field names assumed .real and .imag when typedef has different representation
+Complex coefficient array declared int16 but used as cint16 pointer
+aie::broadcast<cint16,8> called with two scalar arguments instead of one cint16 value
+
+AIE KERNEL SATURATION ROUNDING ERRORS
+aie::set_sat called with integer literal instead of saturation enum
+aie::set_rounding called with integer literal instead of rounding enum
+aie::set_sat called inside expression where void return value is used
+aie::set_rounding called inside expression where void return value is used
+aie::get_sat return assigned to unsupported enum type name
+aie::get_rounding return compared against integer macro that is undefined
+Rounding mode enum misspelled causing unresolved name
+Saturation mode enum misspelled causing unresolved name
+aie::srs shift argument declared float instead of integer
+aie::srs shift argument is negative constexpr causing compiler rejection
+aie::srs shift argument exceeds accumulator bit width
+aie::srs called before accumulator variable is declared
+aie::srs result assigned to raw pointer instead of vector
+aie::to_fixed helper used but no such AIE helper exists
+aie::from_fixed helper used but no such AIE helper exists
+
+AIE KERNEL LOOP AND PIPELINE COMPILE ERRORS
+Loop bound uses aie::vector object in comparison expression
+Loop induction variable declared as aie::vector instead of integer
+chess_prepare_for_pipelining placed after loop instead of before loop body
+chess_prepare_for_pipelining placed in if statement body without following loop
+chess_loop_range arguments use variables that are not compile-time constants
+chess_loop_range macro invoked with one argument instead of two
+chess_loop_range macro invoked with three arguments instead of two
+chess_unroll_loop macro placed after loop header causing parse error
+Loop uses goto into scope containing AIE vector object initialization
+Loop declares variable length array based on stream input sample
+Loop unroll factor macro expands to zero
+Loop unroll factor macro expands to non-integer token
+for loop increment updates stream pointer instead of loop index
+Nested loop uses same index variable redeclared in incompatible scope under old C++ mode
+constexpr loop count declared inside if constexpr branch unavailable outside branch
+
+AIE KERNEL INLINE HELPER ERRORS
+Helper function using aie::vector declared after kernel use without prototype
+Helper function template called without explicit template argument and deduction fails
+Helper returns aie::accum but caller expects aie::vector
+Helper takes input_stream pointer by value but called with output_stream pointer
+Helper takes output_buffer reference but called with input_buffer reference
+Helper function marked __attribute__((always_inline)) with unsupported syntax for xchesscc
+Helper function defined in graph.h and in kernel .cc causing duplicate symbol
+Helper function declared static in header and referenced from adf::source kernel incorrectly
+Helper overloaded on int16 and uint16 but call with literal zero is ambiguous
+Helper overloaded on vector lane count but template deduction cannot infer N
+Helper uses auto return type but xchesscc language mode cannot deduce in this context
+Helper uses trailing return type referencing local alias not in scope
+Helper lambda captures output stream pointer and is passed to unsupported std::for_each
+Helper class has virtual method used in kernel body causing vtable generation failure
+Helper struct constructor uses dynamic allocation inside kernel translation unit
+
+AIE KERNEL STATIC STATE ERRORS
+Static local aie::vector initialized with non-constant expression
+Static local accumulator initialized with aie::zeros inside function scope
+Static array initialized from runtime RTP parameter
+Static coefficient array declared non-const and modified inside kernel causing placement error
+Global non-const state declared in kernel .cc causing unsupported shared state allocation
+Global aie::vector object declared outside kernel body causing initialization failure
+Global input_stream pointer stored for later use across kernel invocations
+Static output_stream pointer cached across calls causing invalid object lifetime
+Static input_buffer reference member declared in helper class
+Static constexpr aie::vector requested but vector type is not literal
+Thread-local storage used in AIE kernel source
+Mutable global counter used in kernel source causing unsupported relocation
+Static data member declared in local helper class inside kernel function
+Global constructor for helper object emitted in kernel translation unit
+Nontrivial destructor object declared static in kernel source
+
+AIE KERNEL TARGET ARCH ERRORS
+AIE-ML-only vector API used while target is AIE
+AIE-only stream intrinsic used while target is AIE-ML with incompatible type
+acc80 accumulator used in a target mode where only acc48 path is available for that operation
+bfloat16 vector used on target that does not support bfloat16 lanes
+float vector intrinsic used in integer-only kernel target configuration
+Vector lane count valid on AIE-ML but too wide for AIE target
+Intrinsic guarded by __AIEARCH__ branch excluded for current target leaving no return statement
+Target-specific include path references aie2 header while compiling for AIE
+aie::mmul helper used without AIE-ML matrix extension support
+aie::block_vector type used but unavailable in selected AIE API version
+Target architecture macro misspelled so wrong code path compiles
+Intrinsic overload only available for cint16 called with cint32 on selected target
+Accumulator tag supported on AIE-ML but not on selected AIE target
+Kernel source uses API introduced in newer Vitis version than current toolchain
+Deprecated AIE API removed in current Vitis version used in kernel source
+
+AIE KERNEL CPLUSPLUS DIALECT ERRORS
+Concepts syntax used in kernel helper while compiler mode is older than C++20
+requires clause used on helper template and rejected by xchesscc mode
+constexpr if used in compiler mode that does not support it
+Structured bindings used on aie::vector result without tuple protocol
+Designated initializers used for cint16 in unsupported C++ dialect
+Class template argument deduction used for helper object in unsupported dialect
+Generic lambda used with stream pointer parameter in unsupported dialect
+auto non-type template parameter used for lane count in unsupported dialect
+consteval helper used in kernel source and rejected by compiler mode
+constinit global used in kernel source and rejected by compiler mode
+std::span used in kernel signature requiring unsupported standard library mode
+std::bit_cast used without C++20 support and unsupported header
+if consteval used in helper function and rejected by compiler mode
+Template lambda used in kernel source causing parser failure
+Fold expression used in helper template under unsupported C++ mode
+
+AIE KERNEL VECTOR SLICE AND CAST ERRORS
+aie::extract<4>(vec, 5) index exceeds number of 4-lane chunks in vector
+aie::extract<16>(vec, 1) chunk index out of range for 16-lane vector
+aie::extract<3>(vec, 0) uses non-power-of-two extract size
+aie::insert(vec, chunk, 4) insert index exceeds destination chunk count
+aie::insert called with chunk element type different from destination vector element type
+aie::insert called with chunk lane count that does not divide destination lane count
+aie::concat called with three vector arguments instead of two
+aie::concat called with scalar and vector instead of two vectors
+aie::interleave_zip result destructured into three variables instead of pair-like result
+aie::interleave_unzip result assigned to single vector of wrong lane count
+aie::broadcast<int16,16> called with pointer instead of scalar value
+aie::broadcast<int16,16> called with aie::vector instead of scalar value
+aie::broadcast<float,16> requested lane count unsupported for float vector width
+aie::filter_even result assigned to vector with original lane count instead of half lane count
+aie::filter_odd result assigned to vector with incompatible element type
+aie::reverse called on accumulator instead of vector
+aie::rotate called with runtime shift when compile-time constant is required
+aie::shuffle_down called with vector and scalar value of wrong type
+aie::shuffle_up result assigned to vector with incompatible lane count
+aie::select called with mask vector of different lane count
+
+AIE KERNEL CAST AND REINTERPRET ERRORS
+aie::vector_cast<int16>(float_vec) used where cast helper is unavailable
+aie::bit_cast<aie::vector<int16,16>>(vec) used without supported AIE bit cast API
+reinterpret_cast<aie::vector<int16,16>>(ptr) attempts to cast pointer to vector object
+reinterpret_cast<int16*>(aie_vector) attempts to cast vector object to pointer
+static_cast<aie::vector<int16,16>>(int32_vec) uses unsupported vector conversion
+const_cast applied to input_buffer iterator type and passed to store_v
+cast from input_stream<int16>* to input_stream<int32>* before readincr
+cast from output_stream<int16>* to output_stream<cint16>* before writeincr
+cast from int16* to aie::vector<int16,16>* then dereferenced for vector load
+cast from void* to input_buffer<int16>* in kernel body
+C-style cast hides incompatible accumulator tag but fails overload resolution
+aie::as_v16int16 helper used but legacy alias is unavailable in current API
+aie::as_v8cint16 helper used on real vector type
+aie::from_vector helper called though no such conversion helper exists
+aie::to_vector helper called as free function instead of accumulator method
+
+AIE KERNEL PARAMETER QUALIFIER ERRORS
+Kernel input stream pointer parameter marked restrict causing parser rejection
+Kernel output stream pointer parameter marked restrict causing parser rejection
+input_buffer reference decorated with restrict keyword in invalid position
+output_buffer reference decorated with restrict keyword in invalid position
+Kernel parameter uses __restrict without compiler-supported spelling
+Kernel parameter uses const restrict pointer with qualifiers in wrong order
+Kernel parameter uses reference to restrict pointer which is not valid C++
+Kernel parameter uses volatile stream pointer causing readincr overload failure
+Kernel parameter uses volatile buffer reference causing begin overload failure
+Kernel parameter uses mutable keyword outside class member declaration
+Kernel parameter has default nullptr value for stream pointer
+Kernel parameter has default-constructed input_buffer value
+Kernel parameter declared register input_stream pointer in unsupported storage class
+Kernel parameter declared thread_local causing invalid storage class
+Kernel parameter declared static in function parameter list
+
+AIE KERNEL ENTRYPOINT LINKAGE ERRORS
+Kernel entrypoint declared in graph.h as extern C but definition omitted extern C
+Kernel entrypoint definition uses extern C but graph.h declaration has C++ mangling
+Kernel entrypoint overloaded after extern C declaration causing linkage conflict
+Kernel entrypoint declared static inline in source file so symbol is not externally visible
+Kernel entrypoint declared constexpr which is invalid for void stream-processing function
+Kernel entrypoint declared as member function of a class instead of free function
+Kernel entrypoint declared inside local namespace but forward declaration is global
+Kernel entrypoint definition hidden behind #ifdef that is false for AIE target
+Kernel entrypoint name collides with macro from included header
+Kernel entrypoint has trailing return type syntax with void auto mismatch
+Kernel entrypoint uses noexcept(false) but declaration uses noexcept(true)
+Kernel entrypoint takes template auto parameter not representable in graph port model
+Kernel entrypoint is explicitly deleted by mistake
+Kernel entrypoint has pure virtual syntax = 0 by mistake
+Kernel entrypoint declared friend inside helper class but no free definition emitted
+
+AIE KERNEL LOCAL MEMORY AND ALIGNMENT ERRORS
+alignas value for vector buffer is not a power of two
+alignas expression uses runtime value rather than compile-time constant
+chess_storage attribute applied to automatic variable with invalid memory space name
+Local buffer declared with alignment smaller than vector load requirement
+Local buffer declared with type int8 then loaded as int16 vector
+Local coefficient array lacks required alignment for aie::load_v<16>
+Local array size depends on readincr result causing variable length array rejection
+Local array of aie::vector objects exceeds stack allocation limit
+Local array initialized with aie::broadcast call in constexpr context
+Pointer to local array returned from helper used by kernel body
+Local buffer marked const then used as output store target
+Local buffer marked volatile then passed to aie::load_v overload
+Local scratch pointer declared but never initialized before aie::load_v
+Local pointer set to nullptr then passed to aie::store_v in unconditional code path
+Local matrix declared as std::array<std::array<int16,N>,M> inside kernel body
+
+AIE KERNEL SCALAR TYPE ALIAS ERRORS
+int16_t used without including cstdint in kernel source
+uint16_t used without including cstdint in kernel source
+int16 AIE alias used before aie_api header defines it
+uint16 AIE alias misspelled as u_int16 in kernel source
+cint16 alias misspelled as c_int16 in kernel source
+acc48 tag used as a variable type instead of accumulator tag
+cacc48 tag used as a scalar variable type instead of accumulator tag
+bfloat16 used without target and header support
+float16 used in C++ source where AIE alias is unavailable
+int4 vector element type used with unsupported lane count
+uint4 vector element type used in stream type unsupported by readincr
+int8 vector lane count chosen larger than target maximum
+uint8 data loaded with signed int8 vector type causing overload mismatch
+int64 vector operation uses intrinsic overload only available for int16 or int32
+uint64 stream type used with vector read intrinsic lacking overload

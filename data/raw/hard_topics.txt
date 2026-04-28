@@ -1,0 +1,49 @@
+Kernel exceeds tile data memory (32KB) due to local coefficient array plus double-buffered IO
+Kernel throughput is 50% of expected due to vector loads crossing memory bank boundaries
+Simulation works for 128-sample input but deadlocks on 1024-sample input from producer-consumer drift
+Intermittent corruption every other frame from broken double-buffer assumptions
+Non-deterministic output between runs from missing lock protocol on shared memory
+acc48 overflow after 256 int16xint16 MACs due to sum growth
+Mapper fails despite sufficient tiles due to placement constraint and cascade conflict
+Optimized build differs from debug build due to missing volatile on shared buffer
+Cascade output always zero because cascade stream between non-adjacent tiles is dropped
+Graph processes one frame then deadlocks due to circular multi-rate schedule
+Kernel works at 256 samples but fails at 512 due to tile memory overrun
+FIR output has periodic glitches every 256 samples from circular buffer wrap off-by-one
+Beamformer correct for 4 antennas but wrong for 8 due to hardcoded vector width assumptions
+Two kernels sharing one tile fail from local memory bank conflicts
+Kernel output correct first call but accumulates DC offset due to missing accumulator reset
+Stream kernel drops last sample in each block from N-1 loop bound
+Three cascaded kernels gradually fill buffer because middle output rate mismatches consumer rate
+Kernel reads coefficient RTP once at startup and never refreshes it
+Packet-switched stream routes to wrong kernel due to header ID mismatch
+Kernel works in x86 sim but fails in aiesimulator due to alignment assumptions
+Lock acquire/release ordering inverted between producer and consumer kernels - deadlocks after first frame
+Kernel local array larger than available scratchpad - overflows into adjacent kernel stack silently
+Multi-rate graph where fast kernel runs 4x but buffer is sized for 1x - fourth invocation corrupts memory
+Cascade tile pair passes unit test but fails at system level because cascade direction is reversed in graph
+Chess compiler unrolls inner loop and reuses register causing read-after-write hazard - wrong output every 4th element
+Buffer ping-pong period is 1 graph iteration but kernel needs 2 iterations to produce valid output - stale buffer read
+Stream synchronization word (tlast) consumed by wrong kernel in multi-kernel pipeline - frame alignment lost
+Float32 kernel accumulates NaN due to uninitialized local float variable used as initial accumulator value
+Kernel with two input streams reads them in fixed order but graph scheduler delivers them in opposite order
+Dead kernel branch prevents compiler from optimizing live branch - throughput 3x below budget
+Works for even buffer sizes but fails for odd - half-vector tail handling missing
+Works for power-of-two vector widths but fails for non-power-of-two
+Works for real data types but fails for complex - complex accumulator path not exercised
+Works for signed types but fails for unsigned - sign-extension assumptions wrong
+Works in functional simulation but fails in cycle-accurate simulation - timing assumption invalid
+Works in aiesim but fails on hardware - DMA descriptor timing assumption invalid on real silicon
+Works for first N frames then fails due to slow state accumulation in hidden variable
+Code looks correct but compiler optimizes away a necessary side-effecting operation
+Code violates an undocumented AIE API constraint that only manifests at scheduling time
+Matrix kernel correct for row-major data but wrong when fed column-major
+Two code paths that should be equivalent differ due to floating-point non-associativity
+Output is all zeros at runtime despite clean compile - intermediate store dropped due to dead-store elimination
+Output samples in wrong order due to lane permutation between two pipeline stages
+Compilation succeeds but linking fails - kernel symbol missing from any source file
+Mapping succeeds but routing fails - tile-to-tile path is congested by unrelated traffic
+Design works in x86sim but fails in aiesim - register-bank assumptions invalid in cycle-accurate model
+Memory bank conflict only manifests when two specific kernels happen to be co-located
+Race condition on shared coefficient table only triggers under specific multi-rate schedule
+Kernel correct standalone but graph throughput collapses due to PLIO clock domain crossing jitter

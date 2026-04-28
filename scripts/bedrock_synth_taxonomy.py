@@ -23,8 +23,8 @@ Usage examples:
   # See what prompt would be sent without calling the API
   python scripts/bedrock_synth_taxonomy.py --dry-run --slugs rtp_update_race_condition
 
-  # More variants, different model
-  python scripts/bedrock_synth_taxonomy.py --variants 5 --model anthropic.claude-3-5-sonnet-20241022-v2:0
+    # More variants, explicit model
+    python scripts/bedrock_synth_taxonomy.py --variants 5 --model moonshotai.kimi-k2.5
 
 Env vars:
   AWS_BEARER_TOKEN_BEDROCK   Bedrock API key (base64-encoded bearer token)
@@ -49,7 +49,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 OUTPUT_FILE = ROOT / "data" / "processed" / "v3" / "bedrock_synth_pairs_v3.jsonl"
 COST_HISTORY_FILE = ROOT / "data" / "processed" / "v3" / "bedrock_synth_cost_history.jsonl"
 COST_TOTALS_FILE = ROOT / "data" / "processed" / "v3" / "bedrock_synth_cost_totals.json"
-DEFAULT_MODEL = "deepseek.v3.2"
+DEFAULT_MODEL = "moonshotai.kimi-k2.5"
 DEFAULT_REGION = "us-east-1"
 DEFAULT_VARIANTS = 3
 DEFAULT_MAX_TOKENS = 8192
@@ -681,21 +681,27 @@ def parse_pair(text: str) -> tuple[str, str] | None:
 _INPUT_COST_PER_1M = {
     "deepseek.v3.2": 0.55,
     "deepseek.r1-v1:0": 1.35,
+    "moonshotai.kimi-k2.5": 0.55,
     "us.anthropic.claude-haiku-4-5-20251001-v1:0": 0.80,
     "anthropic.claude-haiku-4-5-20251001-v1:0": 0.80,
     "us.anthropic.claude-sonnet-4-5-20250929-v1:0": 3.00,
     "anthropic.claude-sonnet-4-5-20250929-v1:0": 3.00,
     "anthropic.claude-sonnet-4-6": 3.00,
+    "us.anthropic.claude-sonnet-4-6": 3.00,
+    "global.anthropic.claude-sonnet-4-6": 3.00,
     "anthropic.claude-opus-4-6-v1": 15.00,
 }
 _OUTPUT_COST_PER_1M = {
     "deepseek.v3.2": 1.10,
     "deepseek.r1-v1:0": 5.40,
+    "moonshotai.kimi-k2.5": 1.10,
     "us.anthropic.claude-haiku-4-5-20251001-v1:0": 4.00,
     "anthropic.claude-haiku-4-5-20251001-v1:0": 4.00,
     "us.anthropic.claude-sonnet-4-5-20250929-v1:0": 15.00,
     "anthropic.claude-sonnet-4-5-20250929-v1:0": 15.00,
     "anthropic.claude-sonnet-4-6": 15.00,
+    "us.anthropic.claude-sonnet-4-6": 15.00,
+    "global.anthropic.claude-sonnet-4-6": 15.00,
     "anthropic.claude-opus-4-6-v1": 75.00,
 }
 
