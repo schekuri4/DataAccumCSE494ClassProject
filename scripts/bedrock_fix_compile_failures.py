@@ -379,7 +379,6 @@ def is_synthetic(orig_row: dict) -> bool:
         or "synthetic_taxonomy" in repo
         or "synthetic_taxonomy" in category
         or "bedrock_synth" in source
-        or repo is None  # paranoia guard
     )
 
 
@@ -651,7 +650,8 @@ def main() -> None:
     # Filter: failed AND not a toolchain-env skip AND we have original row
     candidates: list[dict] = []
     filtered_missing_original = 0
-    filtered_non_synth = 0
+    actionable_synth = 0
+    actionable_real = 0
     filtered_non_kernel = 0
     filtered_low_yield = 0
     for result_row in all_results:
@@ -661,24 +661,26 @@ def main() -> None:
         if orig_row is None:
             filtered_missing_original += 1
             continue
-        if not is_synthetic(orig_row):
-            filtered_non_synth += 1
-            continue
         if (result_row.get("file_type") or "").strip() != "kernel":
             filtered_non_kernel += 1
             continue
         if not is_high_yield_candidate(result_row):
             filtered_low_yield += 1
             continue
+        if is_synthetic(orig_row):
+            actionable_synth += 1
+        else:
+            actionable_real += 1
         candidates.append(result_row)
 
     print(f"Total compile results: {len(all_results)}")
     print(f"Skipped (PS data dir etc.): {sum(1 for r in all_results if should_skip(r))}")
     print(f"Filtered missing original rows: {filtered_missing_original}")
-    print(f"Filtered non-synthetic rows: {filtered_non_synth}")
     print(f"Filtered non-kernel rows: {filtered_non_kernel}")
     print(f"Filtered low-yield failures: {filtered_low_yield}")
     print(f"Actionable failures: {len(candidates)}")
+    print(f"  Actionable synthetic: {actionable_synth}")
+    print(f"  Actionable real:      {actionable_real}")
 
     if args.limit > 0:
         candidates = candidates[: args.limit]

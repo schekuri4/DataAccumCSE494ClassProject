@@ -1,0 +1,75 @@
+V6 Example Row (Readable)
+
+Instruction:
+A Versal AIE build is failing with the error below. Return a unified diff that resolves it.
+
+Error log:
+- /tmp/aie_validate/job_359_62d1539c/kernel.cc:17:36: error: no matching function for call to 'broadcast'
+- /tmp/aie_validate/job_359_62d1539c/kernel.cc:26:17: error: no matching function for call to 'shuffle_up'
+
+Buggy code:
+```cpp
+#include <adf.h>
+#include <aie_api/aie.hpp>
+#include <aie_api/aie_adf.hpp>
+
+using namespace adf;
+
+class fir_filter_cfloat_stream_only_62 {
+public:
+	alignas(32) cfloat coeffs[4] = {cfloat(0.25f, 0.75f), cfloat(0.25f, 0.75f), cfloat(0.25f, 0.75f), cfloat(0.25f, 0.75f)};
+	alignas(32) cfloat delay_line[8] = {cfloat(0.0f, 0.0f), cfloat(0.0f, 0.0f), cfloat(0.0f, 0.0f), cfloat(0.0f, 0.0f), cfloat(0.0f, 0.0f), cfloat(0.0f, 0.0f), cfloat(0.0f, 0.0f), cfloat(0.0f, 0.0f)};
+	void run(input_stream<cfloat>* __restrict in, output_stream<cfloat>* __restrict out);
+};
+
+void fir_filter_cfloat_stream_only_62::run(input_stream<cfloat>* __restrict in, output_stream<cfloat>* __restrict out) {
+	auto coeff = aie::load_v<4>(coeffs);
+	aie::vector<cfloat, 4> state = aie::load_v<4>(delay_line);
+	aie::accum<caccfloat, 4> acc = aie::broadcast<caccfloat, 4>(1);
+	aie::accum<caccfloat, 4> result = aie::zeros<caccfloat, 4>();
+	aie::vector<cfloat, 4> phase_acc = aie::broadcast<cfloat, 4>(cfloat(0.0f, 0.0f));
+	aie::vector<cfloat, 4> phase_step = aie::broadcast<cfloat, 4>(cfloat(0.25f, 0.75f));
+	for (unsigned frame = 0; frame < 32; ++frame)
+		chess_prepare_for_pipelining
+		chess_loop_count(32, 32)
+	{
+		auto vin = readincr_v<4>(in);
+		state = aie::shuffle_up(state, vin, 1);
+		acc = aie::mul(state, coeff);
+		result = aie::add(acc, aie::broadcast<cfloat, 4>(cfloat(0.0f, 0.0f)));
+		writeincr(out, result.template to_vector<cfloat>());
+	}
+}
+```
+Fixed code:
+```cpp
+#include <adf.h>
+#include <aie_api/aie.hpp>
+#include <aie_api/aie_adf.hpp>
+
+using namespace adf;
+
+class fir_filter_cfloat_stream_only_62 {
+public:
+	alignas(32) cfloat coeffs[4] = {cfloat(0.25f, 0.75f), cfloat(0.25f, 0.75f), cfloat(0.25f, 0.75f), cfloat(0.25f, 0.75f)};
+	alignas(32) cfloat delay_line[8] = {cfloat(0.0f, 0.0f), cfloat(0.0f, 0.0f), cfloat(0.0f, 0.0f), cfloat(0.0f, 0.0f), cfloat(0.0f, 0.0f), cfloat(0.0f, 0.0f), cfloat(0.0f, 0.0f), cfloat(0.0f, 0.0f)};
+	void run(input_stream<cfloat>* __restrict in, output_stream<cfloat>* __restrict out);
+};
+
+void fir_filter_cfloat_stream_only_62::run(input_stream<cfloat>* __restrict in, output_stream<cfloat>* __restrict out) {
+	auto coeff = aie::load_v<4>(coeffs);
+	aie::vector<cfloat, 4> state = aie::load_v<4>(delay_line);
+	aie::accum<caccfloat, 4> acc = aie::zeros<caccfloat, 4>();
+	aie::accum<caccfloat, 4> result = aie::zeros<caccfloat, 4>();
+	for (unsigned frame = 0; frame < 32; ++frame)
+		chess_prepare_for_pipelining
+		chess_loop_count(32, 32)
+	{
+		auto vin = readincr_v<4>(in);
+		state = aie::shuffle_up_fill(state, vin, 1);
+		acc = aie::mul(state, coeff);
+		result = aie::add(acc, aie::broadcast<cfloat, 4>(cfloat(0.0f, 0.0f)));
+		writeincr(out, result.template to_vector<cfloat>());
+	}
+}
+```

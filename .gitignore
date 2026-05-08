@@ -33,11 +33,14 @@ scripts/_*.py
 Work/
 AIECompiler.log
 *.log
+*.o
+*.o.lst
 
 # Large intermediate data files - too big for GitHub (>50 MB)
 # Keep: scripts, configs, small metadata JSON, summary files, topic lists
 # Ignore: bulk JSONL datasets and archives
 data/processed/v3/
+data/processed/_archive/
 data/processed/_v1_archive/
 data/processed/archive_v2_and_synthpairs_*/
 data/processed/compile_results/
