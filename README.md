@@ -14,26 +14,26 @@ The current dataset version is **v6**, built from a combination of curated AIE s
 
 ## Current Dataset: v6
 
-| Metric | Value |
-|---|---:|
-| Total samples | 9,063 |
-| Training samples | 8,011 |
-| Validation samples | 1,052 |
-| Unique bug types | 123 |
-| Unique bug categories | 15 |
-| Bedrock compile-bug rows | 7,702 |
-| Unique Bedrock bug labels | 565 |
+| Metric                       | Value |
+| ---------------------------- | ----: |
+| Total samples                | 9,063 |
+| Training samples             | 8,011 |
+| Validation samples           | 1,052 |
+| Unique bug types             |   123 |
+| Unique bug categories        |    15 |
+| Bedrock compile-bug rows     | 7,702 |
+| Unique Bedrock bug labels    |   565 |
 | Rows with real compiler logs | 9,063 |
-| Unified diff repair targets | 9,063 |
+| Unified diff repair targets  | 9,063 |
 
 The dataset files are stored in `data/processed/v6/`:
 
-| File | Description |
-|---|---|
-| `aie_instruction_v6_all.jsonl` | Full v6 instruction dataset |
-| `aie_instruction_v6_train.jsonl` | Training split |
-| `aie_instruction_v6_validation.jsonl` | Validation split |
-| `1 example` | Readable representative example row |
+| File                                  | Description                         |
+| ------------------------------------- | ----------------------------------- |
+| `aie_instruction_v6_all.jsonl`        | Full v6 instruction dataset         |
+| `aie_instruction_v6_train.jsonl`      | Training split                      |
+| `aie_instruction_v6_validation.jsonl` | Validation split                    |
+| `1 example`                           | Readable representative example row |
 
 Each JSONL row follows the same high-level structure:
 
@@ -80,14 +80,14 @@ The dataset was built using a generate, validate, mutate, and materialize workfl
 
 The active validation flow is centered on:
 
-| Script | Purpose |
-|---|---|
-| `scripts/validate_aie_compile.py` | Core AIE compile-validation driver |
-| `scripts/run_validate_wsl.sh` | WSL entrypoint for running validation with Vitis |
+| Script                                    | Purpose                                           |
+| ----------------------------------------- | ------------------------------------------------- |
+| `scripts/validate_aie_compile.py`         | Core AIE compile-validation driver                |
+| `scripts/run_validate_wsl.sh`             | WSL entrypoint for running validation with Vitis  |
 | `scripts/bedrock_fix_compile_failures.py` | Bedrock-assisted repair pass for compile failures |
-| `scripts/enrich_v5_with_wsl_errors.py` | Adds WSL compiler diagnostics to v5-derived rows |
-| `scripts/train_unsloth_windows.py` | Local Windows fine-tuning helper |
-| `scripts/setup_unsloth_windows.ps1` | Windows setup helper for Unsloth training |
+| `scripts/enrich_v5_with_wsl_errors.py`    | Adds WSL compiler diagnostics to v5-derived rows  |
+| `scripts/train_unsloth_windows.py`        | Local Windows fine-tuning helper                  |
+| `scripts/setup_unsloth_windows.ps1`       | Windows setup helper for Unsloth training         |
 
 Older v3, v4, and v5 pipeline scripts have been moved into `scripts/_archive/` so the active scripts directory stays focused.
 
