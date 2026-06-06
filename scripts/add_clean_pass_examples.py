@@ -243,8 +243,11 @@ def main() -> int:
     )
     parser.add_argument(
         "--project-list",
-        default="outputs/v9_corpus_build/manifests/compile_clean_v9_toward200_projects.txt",
-        help="One compile-clean project directory name per line.",
+        default=None,
+        help=(
+            "Optional file with one project directory name per line. "
+            "If omitted, every directory under --golden-root is used."
+        ),
     )
     parser.add_argument("--seed", type=int, default=494)
     parser.add_argument("--max-file-bytes", type=int, default=200_000)
@@ -253,11 +256,18 @@ def main() -> int:
 
     v10_dir = Path(args.v10_dir)
     golden_root = Path(args.golden_root)
-    project_names = [
-        line.strip()
-        for line in Path(args.project_list).read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    if args.project_list:
+        project_names = [
+            line.strip()
+            for line in Path(args.project_list).read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        source_project_list = str(Path(args.project_list))
+    else:
+        project_names = sorted(
+            path.name for path in golden_root.iterdir() if path.is_dir()
+        )
+        source_project_list = f"all directories under {golden_root}"
 
     existing_split_by_group = load_existing_split_groups(v10_dir)
     split_by_group = assign_missing_groups(project_names, existing_split_by_group, args.seed)
@@ -307,7 +317,7 @@ def main() -> int:
     manifest = {
         "dataset_version": "v10",
         "description": "v10 repair dataset plus compile-clean no-change examples.",
-        "source_clean_project_list": str(Path(args.project_list)),
+        "source_clean_project_list": source_project_list,
         "clean_rows": len(all_clean),
         "clean_rows_by_split": dict(Counter(row["metadata"]["split"] for row in all_clean)),
         "repair_rows_by_split": {split: len(rows) for split, rows in repairs.items()},

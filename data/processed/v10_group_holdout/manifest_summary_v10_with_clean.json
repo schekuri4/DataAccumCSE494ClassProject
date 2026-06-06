@@ -1,23 +1,23 @@
 {
-  "clean_rows": 207,
+  "clean_rows": 618,
   "clean_rows_by_split": {
-    "test": 20,
-    "train": 166,
-    "validation": 21
+    "test": 62,
+    "train": 494,
+    "validation": 62
   },
   "combined_group_counts": {
-    "test": 20,
-    "train": 166,
-    "validation": 21
+    "test": 62,
+    "train": 494,
+    "validation": 62
   },
   "combined_group_overlap_train_test": 0,
   "combined_group_overlap_train_validation": 0,
   "combined_group_overlap_validation_test": 0,
-  "combined_rows": 5383,
+  "combined_rows": 5794,
   "combined_rows_by_split": {
-    "test": 547,
-    "train": 4291,
-    "validation": 545
+    "test": 589,
+    "train": 4619,
+    "validation": 586
   },
   "dataset_version": "v10",
   "description": "v10 repair dataset plus compile-clean no-change examples.",
@@ -34,5 +34,5 @@
     "train": 4125,
     "validation": 524
   },
-  "source_clean_project_list": "outputs\\v9_corpus_build\\manifests\\compile_clean_v9_toward200_projects.txt"
+  "source_clean_project_list": "all directories under golden repos"
 }
