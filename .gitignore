@@ -53,6 +53,7 @@ archive_20260425/
 archive/local/
 data/processed/v8/
 data/processed/v9_dataset_40variants/*.jsonl
+data/processed/v10_group_holdout/*.jsonl
 
 # V4 bulk JSONL (keep summary + audit metadata, ignore large train/val/all)
 data/processed/v4/aie_instruction_v4_all.jsonl

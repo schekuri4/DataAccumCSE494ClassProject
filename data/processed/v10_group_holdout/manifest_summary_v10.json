@@ -1,0 +1,56 @@
+{
+  "bug_count_distribution": {
+    "1": 829,
+    "2": 1388,
+    "3": 1469,
+    "4": 1490
+  },
+  "compile_error_classes": {
+    "aie_api_compile_error": 8,
+    "compile_error": 5137,
+    "missing_aie_types": 24,
+    "missing_dependency_after_stub": 7
+  },
+  "dataset_version": "v10",
+  "description": "Group-held-out, deduplicated, clean-log repair dataset derived from v9.",
+  "duplicate_reasons": {
+    "code_context_without_log": 75,
+    "full_context": 46,
+    "response": 26
+  },
+  "files": {
+    "all": "aie_instruction_v10_all.jsonl",
+    "quarantine": "aie_instruction_v10_quarantine.jsonl",
+    "removed_duplicates": "aie_instruction_v10_removed_duplicates.jsonl",
+    "test": "aie_instruction_v10_test.jsonl",
+    "train": "aie_instruction_v10_train.jsonl",
+    "validation": "aie_instruction_v10_validation.jsonl"
+  },
+  "group_counts": {
+    "test": 20,
+    "train": 157,
+    "validation": 20
+  },
+  "group_overlap_train_test": 0,
+  "group_overlap_train_validation": 0,
+  "group_overlap_validation_test": 0,
+  "kept_repair_rows": 5176,
+  "quarantine_reasons": {
+    "exception": 1,
+    "no_compile_result": 123,
+    "tool_failure_marker": 1197,
+    "validation_timeout": 1
+  },
+  "quarantine_rows": 1322,
+  "removed_duplicate_rows": 147,
+  "source_file": "data\\processed\\v9_dataset_40variants\\aie_instruction_v9_all.jsonl",
+  "source_rows": 6645,
+  "targets": {
+    "AIE": 4844,
+    "AIE-ML": 332
+  },
+  "test_rows": 527,
+  "train_rows": 4125,
+  "unique_bug_types": 150,
+  "validation_rows": 524
+}

@@ -1,36 +1,51 @@
 # DataAccum AIE Debug Dataset
 
-This project builds compile-grounded instruction datasets for AMD/Xilinx Versal AI Engine (AIE) debugging. The current active artifact is the **v9** dataset, generated from compile-clean golden corpus projects and mutated with AIE-specific bug mutators.
+This project builds compile-grounded instruction datasets for AMD/Xilinx Versal AI Engine (AIE) debugging. The current active training/evaluation artifact is the **v10 group-holdout** dataset, derived from the v9 repair corpus after deduplication, log cleanup, and project-level splitting.
 
 Each training row asks a model to repair buggy AIE/ADF source code from real compiler diagnostics and return a focused unified diff.
 
 ## Current Dataset
 
-The active dataset lives in:
+The cleaner v10 dataset lives in:
+
+```text
+data/processed/v10_group_holdout/
+```
+
+| File | Purpose |
+| --- | --- |
+| `aie_instruction_v10_all.jsonl` | Clean repair rows after dedupe/quarantine |
+| `aie_instruction_v10_train.jsonl` | Group-held-out training split |
+| `aie_instruction_v10_validation.jsonl` | Group-held-out validation split |
+| `aie_instruction_v10_test.jsonl` | Group-held-out test split |
+| `aie_instruction_v10_quarantine.jsonl` | Tool-failure/no-result rows kept out of normal repair training |
+| `aie_instruction_v10_removed_duplicates.jsonl` | Removed duplicate rows for auditability |
+| `manifest_summary_v10.json` | Row counts, leakage checks, filter reasons |
+
+Current v10 headline stats:
+
+| Metric | Value |
+| --- | ---: |
+| Clean repair rows | 5,176 |
+| Train rows | 4,125 |
+| Validation rows | 524 |
+| Test rows | 527 |
+| Train / validation / test groups | 157 / 20 / 20 |
+| Group overlap across splits | 0 |
+| Duplicate-hash overlap across splits | 0 |
+| Quarantined rows | 1,322 |
+| Removed duplicate rows | 147 |
+| Unique bug types | 150 |
+| Bug count per variant | Random 1-4 |
+| Max variants per corpus project | 40 |
+
+The larger v9 repair artifact is still available locally at:
 
 ```text
 data/processed/v9_dataset_40variants/
 ```
 
-| File | Purpose |
-| --- | --- |
-| `aie_instruction_v9_all.jsonl` | Full v9 instruction dataset |
-| `aie_instruction_v9_train.jsonl` | Training split |
-| `aie_instruction_v9_validation.jsonl` | Validation split |
-| `manifest_summary_v9.json` | Row counts, bug taxonomy, shard provenance |
-
-Current v9 headline stats:
-
-| Metric | Value |
-| --- | ---: |
-| Total rows | 6,645 |
-| Train rows | 5,869 |
-| Validation rows | 776 |
-| Compile-clean corpus groups used | 197 |
-| Unique bug types | 152 |
-| Unique bug categories | 28 |
-| Bug count per variant | Random 1-4 |
-| Max variants per corpus project | 40 |
+v9 has 6,645 rows and is useful for corpus analysis, but v10 should be preferred for training and honest validation because it fixes the project-leakage problem in the original random split.
 
 Each JSONL row has this shape:
 
@@ -65,8 +80,8 @@ Each JSONL row has this shape:
 │   ├── raw/                          Raw examples and notes
 │   └── processed/
 │       ├── aie_debug_benchmark_holdout.json
-│       ├── v8/                       Previous dataset generation
-│       └── v9_dataset_40variants/    Current dataset
+│       ├── v9_dataset_40variants/    Larger v9 repair artifact
+│       └── v10_group_holdout/        Current cleaned train/validation/test dataset
 └── outputs/
     └── v9_corpus_build/              Local run artifacts, logs, audits, shards, backups
 ```
@@ -102,6 +117,7 @@ outputs/v9_corpus_build/
 | `scripts/run_v7_parallel.py` | Parallel shard runner for dataset generation |
 | `scripts/build_v7_bug_dataset.py` | Dataset materializer and mutator application engine |
 | `scripts/merge_v7_datasets.py` | Merges shard outputs into train/validation/all JSONL files |
+| `scripts/prepare_v10_dataset.py` | Builds the group-held-out, deduped, clean-log v10 dataset |
 | `scripts/audit_v9_baselines.py` | Audits golden corpus baseline compile success |
 | `scripts/hydrate_golden_missing_files.py` | Fetches missing repo-local headers/source files into corpus projects |
 | `scripts/scrape_golden_aie_examples.py` | Scrapes candidate golden AIE examples |
@@ -173,19 +189,27 @@ After merging, the final v9 files were moved to:
 data/processed/v9_dataset_40variants/
 ```
 
+The cleaner group-held-out v10 split is generated from v9 with:
+
+```powershell
+python scripts\prepare_v10_dataset.py `
+  --input data\processed\v9_dataset_40variants\aie_instruction_v9_all.jsonl `
+  --out-dir data\processed\v10_group_holdout
+```
+
 ## Useful Checks
 
 Count rows:
 
 ```powershell
-Get-Content data\processed\v9_dataset_40variants\aie_instruction_v9_all.jsonl |
+Get-Content data\processed\v10_group_holdout\aie_instruction_v10_all.jsonl |
   Measure-Object -Line
 ```
 
 Inspect the summary:
 
 ```powershell
-Get-Content data\processed\v9_dataset_40variants\manifest_summary_v9.json
+Get-Content data\processed\v10_group_holdout\manifest_summary_v10.json
 ```
 
 Check workspace state:
@@ -205,6 +229,7 @@ golden repos/
 bug famalies/
 scripts/
 data/processed/v9_dataset_40variants/
+data/processed/v10_group_holdout/
 ```
 
 If you rename those, update script defaults and README commands at the same time.
