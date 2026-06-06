@@ -14,16 +14,14 @@ data/processed/v10_group_holdout/
 
 | File | Purpose |
 | --- | --- |
-| `aie_instruction_v10_all.jsonl` | Clean repair rows after dedupe/quarantine |
-| `aie_instruction_v10_train.jsonl` | Group-held-out training split |
-| `aie_instruction_v10_validation.jsonl` | Group-held-out validation split |
-| `aie_instruction_v10_test.jsonl` | Group-held-out test split |
-| `aie_instruction_v10_quarantine.jsonl` | Tool-failure/no-result rows kept out of normal repair training |
-| `aie_instruction_v10_removed_duplicates.jsonl` | Removed duplicate rows for auditability |
-| `manifest_summary_v10.json` | Row counts, leakage checks, filter reasons |
-| `aie_instruction_v10_clean_pass.jsonl` | Compile-clean golden projects where the expected response is `NO_CHANGE` |
-| `aie_instruction_v10_*_with_clean.jsonl` | Repair splits plus clean/pass examples |
-| `manifest_summary_v10_with_clean.json` | Counts for the repair-plus-clean companion dataset |
+| `aie_instruction_v10_all.jsonl` | Main dataset: repair rows plus clean `NO_CHANGE` examples |
+| `auxiliary/aie_instruction_v10_*_with_clean.jsonl` | Group-held-out train/validation/test split files |
+| `auxiliary/aie_instruction_v10_repair_only_*.jsonl` | Repair-only split files before clean examples |
+| `auxiliary/aie_instruction_v10_clean_pass.jsonl` | Clean golden projects where the expected response is `NO_CHANGE` |
+| `auxiliary/aie_instruction_v10_quarantine.jsonl` | Tool-failure/no-result rows kept out of normal repair training |
+| `auxiliary/aie_instruction_v10_removed_duplicates.jsonl` | Removed duplicate rows for auditability |
+| `auxiliary/manifest_summary_v10_repair_only.json` | Repair-only row counts, leakage checks, filter reasons |
+| `auxiliary/manifest_summary_v10_with_clean.json` | Counts for the main repair-plus-clean dataset |
 
 Current v10 headline stats:
 
@@ -211,7 +209,7 @@ python scripts\add_clean_pass_examples.py `
   --golden-root "golden repos"
 ```
 
-For repair-only training, use `aie_instruction_v10_train.jsonl`. For repair plus clean/no-change behavior, use `aie_instruction_v10_train_with_clean.jsonl`.
+For the simplest full-dataset path, use `aie_instruction_v10_all.jsonl`. For split-based training, use `auxiliary/aie_instruction_v10_train_with_clean.jsonl`. Repair-only splits are kept under `auxiliary/` for ablations.
 
 The repair rows remain compile-grounded. The clean/pass rows intentionally include every downloaded unedited golden project, including projects that were not used for mutation because local compile flags or dependencies were incomplete.
 
@@ -227,7 +225,7 @@ Get-Content data\processed\v10_group_holdout\aie_instruction_v10_all.jsonl |
 Inspect the summary:
 
 ```powershell
-Get-Content data\processed\v10_group_holdout\manifest_summary_v10.json
+Get-Content data\processed\v10_group_holdout\auxiliary\manifest_summary_v10_with_clean.json
 ```
 
 Check workspace state:

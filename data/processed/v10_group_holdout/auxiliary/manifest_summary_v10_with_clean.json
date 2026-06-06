@@ -22,12 +22,13 @@
   "dataset_version": "v10",
   "description": "v10 repair dataset plus compile-clean no-change examples.",
   "files": {
-    "all_with_clean": "aie_instruction_v10_all_with_clean.jsonl",
-    "clean_pass": "aie_instruction_v10_clean_pass.jsonl",
-    "test_with_clean": "aie_instruction_v10_test_with_clean.jsonl",
-    "train_with_clean": "aie_instruction_v10_train_with_clean.jsonl",
-    "validation_with_clean": "aie_instruction_v10_validation_with_clean.jsonl"
+    "all": "aie_instruction_v10_all.jsonl",
+    "clean_pass": "auxiliary/aie_instruction_v10_clean_pass.jsonl",
+    "test_with_clean": "auxiliary/aie_instruction_v10_test_with_clean.jsonl",
+    "train_with_clean": "auxiliary/aie_instruction_v10_train_with_clean.jsonl",
+    "validation_with_clean": "auxiliary/aie_instruction_v10_validation_with_clean.jsonl"
   },
+  "layout": "single top-level all-data JSONL plus auxiliary split/audit files",
   "missing_projects": [],
   "repair_rows_by_split": {
     "test": 527,

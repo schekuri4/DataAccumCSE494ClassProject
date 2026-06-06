@@ -145,7 +145,7 @@ def format_files(files: list[tuple[str, str]], max_total_chars: int) -> tuple[st
 def load_existing_split_groups(v10_dir: Path) -> dict[str, str]:
     split_by_group: dict[str, str] = {}
     for split in ("train", "validation", "test"):
-        path = v10_dir / f"aie_instruction_v10_{split}.jsonl"
+        path = repair_split_path(v10_dir, split)
         if not path.exists():
             continue
         for row in read_jsonl(path):
@@ -178,6 +178,13 @@ def assign_missing_groups(
         assigned[group] = split
         counts[split] += 1
     return assigned
+
+
+def repair_split_path(v10_dir: Path, split: str) -> Path:
+    flat = v10_dir / f"aie_instruction_v10_{split}.jsonl"
+    if flat.exists():
+        return flat
+    return v10_dir / "auxiliary" / f"aie_instruction_v10_repair_only_{split}.jsonl"
 
 
 def make_clean_row(
@@ -289,10 +296,11 @@ def main() -> int:
             )
         )
 
+    auxiliary_dir = v10_dir / "auxiliary"
     repairs = {
-        "train": read_jsonl(v10_dir / "aie_instruction_v10_train.jsonl"),
-        "validation": read_jsonl(v10_dir / "aie_instruction_v10_validation.jsonl"),
-        "test": read_jsonl(v10_dir / "aie_instruction_v10_test.jsonl"),
+        "train": read_jsonl(repair_split_path(v10_dir, "train")),
+        "validation": read_jsonl(repair_split_path(v10_dir, "validation")),
+        "test": read_jsonl(repair_split_path(v10_dir, "test")),
     }
     clean_by_split: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in clean_rows:
@@ -305,10 +313,10 @@ def main() -> int:
     all_clean = clean_by_split["train"] + clean_by_split["validation"] + clean_by_split["test"]
     all_combined = combined["train"] + combined["validation"] + combined["test"]
 
-    write_jsonl(v10_dir / "aie_instruction_v10_clean_pass.jsonl", all_clean)
-    write_jsonl(v10_dir / "aie_instruction_v10_all_with_clean.jsonl", all_combined)
+    write_jsonl(auxiliary_dir / "aie_instruction_v10_clean_pass.jsonl", all_clean)
+    write_jsonl(v10_dir / "aie_instruction_v10_all.jsonl", all_combined)
     for split in ("train", "validation", "test"):
-        write_jsonl(v10_dir / f"aie_instruction_v10_{split}_with_clean.jsonl", combined[split])
+        write_jsonl(auxiliary_dir / f"aie_instruction_v10_{split}_with_clean.jsonl", combined[split])
 
     groups_by_split = defaultdict(set)
     for row in all_combined:
@@ -329,14 +337,14 @@ def main() -> int:
         "combined_group_overlap_validation_test": len(groups_by_split["validation"] & groups_by_split["test"]),
         "missing_projects": missing_projects,
         "files": {
-            "clean_pass": "aie_instruction_v10_clean_pass.jsonl",
-            "all_with_clean": "aie_instruction_v10_all_with_clean.jsonl",
-            "train_with_clean": "aie_instruction_v10_train_with_clean.jsonl",
-            "validation_with_clean": "aie_instruction_v10_validation_with_clean.jsonl",
-            "test_with_clean": "aie_instruction_v10_test_with_clean.jsonl",
+            "all": "aie_instruction_v10_all.jsonl",
+            "clean_pass": "auxiliary/aie_instruction_v10_clean_pass.jsonl",
+            "train_with_clean": "auxiliary/aie_instruction_v10_train_with_clean.jsonl",
+            "validation_with_clean": "auxiliary/aie_instruction_v10_validation_with_clean.jsonl",
+            "test_with_clean": "auxiliary/aie_instruction_v10_test_with_clean.jsonl",
         },
     }
-    (v10_dir / "manifest_summary_v10_with_clean.json").write_text(
+    (auxiliary_dir / "manifest_summary_v10_with_clean.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )

@@ -54,8 +54,9 @@ archive/local/
 data/processed/v8/
 data/processed/v9_dataset_40variants/*.jsonl
 data/processed/v10_group_holdout/*.jsonl
-!data/processed/v10_group_holdout/manifest_summary_v10.json
-!data/processed/v10_group_holdout/manifest_summary_v10_with_clean.json
+data/processed/v10_group_holdout/auxiliary/*.jsonl
+!data/processed/v10_group_holdout/auxiliary/manifest_summary_v10_repair_only.json
+!data/processed/v10_group_holdout/auxiliary/manifest_summary_v10_with_clean.json
 
 # V4 bulk JSONL (keep summary + audit metadata, ignore large train/val/all)
 data/processed/v4/aie_instruction_v4_all.jsonl

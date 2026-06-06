@@ -19,12 +19,12 @@
     "response": 26
   },
   "files": {
-    "all": "aie_instruction_v10_all.jsonl",
-    "quarantine": "aie_instruction_v10_quarantine.jsonl",
-    "removed_duplicates": "aie_instruction_v10_removed_duplicates.jsonl",
-    "test": "aie_instruction_v10_test.jsonl",
-    "train": "aie_instruction_v10_train.jsonl",
-    "validation": "aie_instruction_v10_validation.jsonl"
+    "all": "auxiliary/aie_instruction_v10_repair_only_all.jsonl",
+    "quarantine": "auxiliary/aie_instruction_v10_quarantine.jsonl",
+    "removed_duplicates": "auxiliary/aie_instruction_v10_removed_duplicates.jsonl",
+    "test": "auxiliary/aie_instruction_v10_repair_only_test.jsonl",
+    "train": "auxiliary/aie_instruction_v10_repair_only_train.jsonl",
+    "validation": "auxiliary/aie_instruction_v10_repair_only_validation.jsonl"
   },
   "group_counts": {
     "test": 20,
