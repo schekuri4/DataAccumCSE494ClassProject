@@ -1,153 +1,116 @@
-# DataAccum CSE494 Class Project
+# DataAccum AIE Debug Dataset
 
-This repository contains a domain-specific dataset and tooling pipeline for training and evaluating large language models on AMD/Xilinx Versal AI Engine (AIE) debugging tasks. The project focuses on compile-grounded bug repair for AIE kernels and ADF graphs, where each example provides buggy source code, real Vitis compiler diagnostics, and a target repair in unified diff format.
+This project builds compile-grounded instruction datasets for AMD/Xilinx Versal AI Engine (AIE) debugging. The current active artifact is the **v9** dataset, generated from compile-clean golden corpus projects and mutated with AIE-specific bug mutators.
 
-The current dataset version is **v6**, built from a combination of curated AIE source material, LLM-generated correct baselines, targeted bug injection, and validation with the real Vitis AIE toolchain.
+Each training row asks a model to repair buggy AIE/ADF source code from real compiler diagnostics and return a focused unified diff.
 
-## Project Goals
+## Current Dataset
 
-- Build a supervised fine-tuning dataset for Versal AIE code repair.
-- Cover AIE-specific failure modes that general code datasets rarely include.
-- Use compiler validation instead of relying only on LLM-generated assumptions.
-- Train models to return focused unified diffs rather than full rewritten files.
-- Support paper-ready methodology, dataset statistics, and reproducible evaluation artifacts.
+The active dataset lives in:
 
-## Current Dataset: v6
+```text
+data/processed/v9_dataset_40variants/
+```
 
-| Metric                       | Value |
-| ---------------------------- | ----: |
-| Total samples                | 9,063 |
-| Training samples             | 8,011 |
-| Validation samples           | 1,052 |
-| Unique bug types             |   123 |
-| Unique bug categories        |    15 |
-| Bedrock compile-bug rows     | 7,702 |
-| Unique Bedrock bug labels    |   565 |
-| Rows with real compiler logs | 9,063 |
-| Unified diff repair targets  | 9,063 |
+| File | Purpose |
+| --- | --- |
+| `aie_instruction_v9_all.jsonl` | Full v9 instruction dataset |
+| `aie_instruction_v9_train.jsonl` | Training split |
+| `aie_instruction_v9_validation.jsonl` | Validation split |
+| `manifest_summary_v9.json` | Row counts, bug taxonomy, shard provenance |
 
-The dataset files are stored in `data/processed/v6/`:
+Current v9 headline stats:
 
-| File                                  | Description                         |
-| ------------------------------------- | ----------------------------------- |
-| `aie_instruction_v6_all.jsonl`        | Full v6 instruction dataset         |
-| `aie_instruction_v6_train.jsonl`      | Training split                      |
-| `aie_instruction_v6_validation.jsonl` | Validation split                    |
-| `1 example`                           | Readable representative example row |
+| Metric | Value |
+| --- | ---: |
+| Total rows | 6,645 |
+| Train rows | 5,869 |
+| Validation rows | 776 |
+| Compile-clean corpus groups used | 197 |
+| Unique bug types | 152 |
+| Unique bug categories | 28 |
+| Bug count per variant | Random 1-4 |
+| Max variants per corpus project | 40 |
 
-Each JSONL row follows the same high-level structure:
+Each JSONL row has this shape:
 
 ```json
 {
-  "instruction": "A Versal AIE build is failing with the error below. Return a unified diff that resolves it.",
-  "context": "Buggy source code plus the real compiler error log.",
-  "response": "A unified diff that repairs the bug.",
+  "instruction": "A Versal AIE build is failing...",
+  "context": "Buggy project files plus compiler diagnostics...",
+  "response": "A unified diff that repairs the project...",
   "metadata": {
-    "split": "train or validation",
-    "bug_type": "...",
-    "category": "...",
-    "response_format": "unified_diff",
-    "has_real_error_log": true
+    "dataset_version": "v9",
+    "split": "train",
+    "bug_count": 3,
+    "bug_types": ["..."],
+    "compile_error_class": "compile_error",
+    "target": "AIE"
   }
 }
 ```
 
-## Methodology Overview
-
-The dataset was built using a generate, validate, mutate, and materialize workflow.
-
-1. **Generate correct AIE baselines**
-   - LLM prompts create compact AIE mini-projects containing a graph file and kernel source file.
-   - Prompts constrain the model to valid AIE APIs, realistic graph structure, and mutation-friendly code.
-
-2. **Compile-validate correct projects**
-   - Candidate baselines are compiled with the Vitis AIE toolchain.
-   - Only compile-valid baselines are accepted as correct references.
-
-3. **Inject targeted compile-time bugs**
-   - A separate mutation prompt introduces one realistic AIE bug into each accepted baseline.
-   - Bugs cover stream/window interfaces, graph wiring, vector intrinsics, accumulator types, template arguments, missing headers, and related AIE-specific compiler failures.
-
-4. **Validate buggy projects**
-   - Mutated projects must fail compilation.
-   - The real compiler error log is captured and stored with the training example.
-
-5. **Create instruction rows**
-   - The final target response is computed as a unified diff from buggy code to the compile-valid correction.
-   - This teaches models to produce targeted patches that can be applied and recompiled.
-
-## Validation Tooling
-
-The active validation flow is centered on:
-
-| Script                                    | Purpose                                           |
-| ----------------------------------------- | ------------------------------------------------- |
-| `scripts/validate_aie_compile.py`         | Core AIE compile-validation driver                |
-| `scripts/run_validate_wsl.sh`             | WSL entrypoint for running validation with Vitis  |
-| `scripts/bedrock_fix_compile_failures.py` | Bedrock-assisted repair pass for compile failures |
-| `scripts/enrich_v5_with_wsl_errors.py`    | Adds WSL compiler diagnostics to v5-derived rows  |
-| `scripts/train_unsloth_windows.py`        | Local Windows fine-tuning helper                  |
-| `scripts/setup_unsloth_windows.ps1`       | Windows setup helper for Unsloth training         |
-
-Older v3, v4, and v5 pipeline scripts have been moved into `scripts/_archive/` so the active scripts directory stays focused.
-
-## AIE Mini-Project Format
-
-Generated and validated examples use a compact two-file AIE project layout:
+## Clean Project Layout
 
 ```text
-// FILE: graph.h
-// ADF graph definition, PLIO/GMIO ports, kernels, and connections
-
-// FILE: kernels/<name>.cc
-// AIE kernel implementation using stream, window, vector, or accumulator APIs
+.
+├── README.md                         Project overview and workflow
+├── CITATIONS.md                      Source/provenance notes
+├── archive/                          Local legacy archive notes and ignored archive/local
+├── docs/                             Handoff and longer project notes
+├── scripts/                          Dataset, corpus, validation, and repair tools
+├── bug famalies/                     Bedrock bug-family generation and generated mutators
+├── golden repos/                     Hydrated local golden corpus slices
+├── data/
+│   ├── raw/                          Raw examples and notes
+│   └── processed/
+│       ├── aie_debug_benchmark_holdout.json
+│       ├── v8/                       Previous dataset generation
+│       └── v9_dataset_40variants/    Current dataset
+└── outputs/
+    └── v9_corpus_build/              Local run artifacts, logs, audits, shards, backups
 ```
 
-The graph side typically includes `adf::graph`, `adf::kernel::create`, `adf::source`, `adf::connect`, and `adf::runtime<adf::ratio>`. Kernel files use AIE headers and APIs such as `readincr`, `writeincr`, `readincr_v`, `writeincr_v`, `aie::load_v`, `aie::mul`, `aie::accum`, and related vector operations.
+`outputs/`, `golden repos/`, large JSONL files, Vitis build products, local caches, and secrets are ignored by Git. They are intentionally local/rebuildable artifacts.
 
-## Example Training Task
+## Organized Output Artifacts
+
+The previous flat `outputs/` directory has been grouped under:
 
 ```text
-Instruction:
-A Versal AIE build is failing with the error below. Return a unified diff that resolves it.
-
-Compiler errors:
-/tmp/aie_validate/job_359_62d1539c/kernel.cc:17:36: error: no matching function for call to 'broadcast'
-/tmp/aie_validate/job_359_62d1539c/kernel.cc:26:17: error: no matching function for call to 'shuffle_up'
-
-Expected response:
-A unified diff that changes the invalid accumulator initialization and replaces the invalid shuffle call with the correct AIE API usage.
+outputs/v9_corpus_build/
 ```
 
-A full readable version of this example is available at `data/processed/v6/1 example`.
+| Subdirectory | Contents |
+| --- | --- |
+| `audits/baseline/` | Full and partial baseline compile audits |
+| `audits/targeted/` | Targeted repair/audit experiments |
+| `audits/debug/` | Small focused debug audits |
+| `datasets/` | Builder-native dataset backups and pilot runs |
+| `debug_workdirs/` | Kept WSL/debug compile workdirs |
+| `local_build/` | Local Vitis `Work/` build output |
+| `logs/` | Scrape, shard, run, and compiler logs |
+| `manifests/` | Compile-clean project manifests |
+| `reports/` | Corpus reports and extra-candidate reports |
+| `shards/` | v9 shard outputs used for the final merge |
 
-## Source Corpus and Provenance
+## Main Scripts
 
-The project uses curated AIE material from official AMD/Xilinx sources, research repositories, local examples, and synthetic generation. Source references and inclusion notes are documented in `CITATIONS.md`.
+| Script | Purpose |
+| --- | --- |
+| `scripts/validate_aie_compile.py` | Core compile validator for AIE/AIE-ML projects |
+| `scripts/run_v7_parallel.py` | Parallel shard runner for dataset generation |
+| `scripts/build_v7_bug_dataset.py` | Dataset materializer and mutator application engine |
+| `scripts/merge_v7_datasets.py` | Merges shard outputs into train/validation/all JSONL files |
+| `scripts/audit_v9_baselines.py` | Audits golden corpus baseline compile success |
+| `scripts/hydrate_golden_missing_files.py` | Fetches missing repo-local headers/source files into corpus projects |
+| `scripts/scrape_golden_aie_examples.py` | Scrapes candidate golden AIE examples |
+| `scripts/repair_*.py` | Targeted corpus repair passes used to raise compile success |
+| `bug famalies/generate_bug_families_bedrock.py` | Generates bug-family definitions and Python mutators |
 
-Important source families include:
+The script names still include `v7` in a few places because the builder lineage started there. The current dataset artifact is v9.
 
-- AMD/Xilinx Vitis tutorials and in-depth tutorials.
-- Vitis Libraries and Model Composer examples.
-- Research and community repositories such as Aries, AIM, SSR, GAMA, MaxEVA, polyaie, onnx2versal, iree-amd-aie, and MLIR-AIE-derived examples.
-- Local hand-authored debug pairs for deadlock-style and out-of-bounds-style failures.
-
-The curated source index in `aie_dataset/DATASET_INDEX.md` summarizes available examples across FIR filters, beamforming graphs, GEMM kernels, stream interfaces, window interfaces, cascade streams, GMIO, PLIO, and vector datatype coverage.
-
-## Repository Structure
-
-```text
-aie_dataset/              Curated AIE examples and debug pairs
-axolotl/                  Axolotl fine-tuning configs and notes
-data/processed/v6/        Current v6 instruction dataset
-scripts/                  Active validation, repair, and training scripts
-scripts/_archive/         Archived historical pipeline scripts
-unsloth/                  Local Windows fine-tuning notes
-Work/                     Local Vitis build outputs, ignored by git
-outputs/                  Local model/checkpoint outputs, ignored by git
-```
-
-## Environment Setup
+## Environment
 
 ### Python
 
@@ -157,30 +120,95 @@ python -m venv .venv
 pip install boto3 requests tqdm
 ```
 
-### Vitis AIE Validation
+### Secrets
 
-Validation is designed to run through WSL with Vitis 2025.2 available inside Ubuntu. The repository uses `scripts/run_validate_wsl.sh` as the bridge into the Linux validation environment.
+Do not commit local tokens or Bedrock credentials.
 
-```bash
-bash scripts/run_validate_wsl.sh --help
+Expected local secret locations:
+
+```text
+.venv/.env
+bug famalies/secrets.json
 ```
 
-### Amazon Bedrock
+### Vitis / WSL
 
-Bedrock-backed generation and repair scripts require a bearer token in the environment:
+Compile validation is designed to run through WSL with the Vitis AIE toolchain installed and available inside the Linux environment. The validator backend used for v9 was:
+
+```text
+--validator-backend wsl
+```
+
+## Reproduce The v9 Dataset Build
+
+The v9 run used the compile-clean project manifest generated after corpus hydration and repair:
+
+```text
+outputs/v9_corpus_build/manifests/compile_clean_v9_toward200_projects.txt
+```
+
+The high-throughput build command was:
 
 ```powershell
-$env:AWS_BEARER_TOKEN_BEDROCK = "<your-bedrock-token>"
+python scripts\run_v7_parallel.py `
+  --corpus-root "golden repos" `
+  --out-dir "outputs\v9_dataset_40variants" `
+  --project-list "outputs\v9_corpus_build\manifests\compile_clean_v9_toward200_projects.txt" `
+  --shards 16 `
+  --total-workers 32 `
+  --variants-per-project 40 `
+  --min-bugs 1 `
+  --max-bugs 4 `
+  --mutation-source generated `
+  --generated-mutator-dir "bug famalies\generated\mutators" `
+  --validator-backend wsl `
+  --timeout 120 `
+  --no-resume `
+  --keep-shards
 ```
 
-## Fine-Tuning
+After merging, the final v9 files were moved to:
 
-Fine-tuning configuration files are available in `axolotl/` for Qwen2.5-Coder-based SFT and QLoRA runs. Local Windows fine-tuning notes are available in `unsloth/LOCAL_WINDOWS_FINE_TUNE.md`.
+```text
+data/processed/v9_dataset_40variants/
+```
 
-## Notes on Large Artifacts
+## Useful Checks
 
-Large generated archives, local build products, model checkpoints, and compiler outputs are intentionally ignored where they exceed normal GitHub repository limits or are reproducible from scripts. The current v6 JSONL dataset files are kept in `data/processed/v6/` for project reproducibility.
+Count rows:
 
-## Citations
+```powershell
+Get-Content data\processed\v9_dataset_40variants\aie_instruction_v9_all.jsonl |
+  Measure-Object -Line
+```
 
-See `CITATIONS.md` for repository provenance, source filtering rules, synthetic data notes, and AMD/Xilinx documentation references used to guide the dataset taxonomy and methodology.
+Inspect the summary:
+
+```powershell
+Get-Content data\processed\v9_dataset_40variants\manifest_summary_v9.json
+```
+
+Check workspace state:
+
+```powershell
+git status --short
+```
+
+## Cleanup Notes
+
+The repository has historical v5/v6 data deletions already visible in Git status from earlier work. The cleanup in this pass did not restore or remove those tracked historical files; it only organized current generated artifacts and documented the v9 layout.
+
+The following paths are intentionally kept stable because scripts reference them directly:
+
+```text
+golden repos/
+bug famalies/
+scripts/
+data/processed/v9_dataset_40variants/
+```
+
+If you rename those, update script defaults and README commands at the same time.
+
+## Provenance
+
+See `CITATIONS.md` for source-family notes, AMD/Xilinx documentation references, and repository provenance used to guide the dataset taxonomy.

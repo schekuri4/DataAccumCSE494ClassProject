@@ -64,6 +64,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import posixpath
 import platform
 import re
 import shutil
@@ -216,9 +217,14 @@ def detect_toolchain(cli_aietools: str | None, cli_vitis: str | None) -> Toolcha
         ]:
             if inc.exists():
                 include_dirs.append(inc)
-        # Sibling Vitis
+        # Vitis may be either the parent of aietools
+        # (/vitis/2025.2/Vitis/aietools) or a sibling
+        # (C:\AMDDesignTools\2025.2\aietools + Vitis).
+        parent_vitis = aietools_root.parent
         sib_vitis = aietools_root.parent / "Vitis"
-        if sib_vitis.exists():
+        if (parent_vitis / "bin").exists():
+            vitis_root = parent_vitis
+        elif sib_vitis.exists():
             vitis_root = sib_vitis
 
     # Chess library paths (used with xchesscc -P)
@@ -244,6 +250,11 @@ def detect_toolchain(cli_aietools: str | None, cli_vitis: str | None) -> Toolcha
         Path(r"D:\fpga\2024.2\Vitis"),
         Path(r"C:\Xilinx\2025.2\Vitis"),
         Path(r"C:\Xilinx\2024.2\Vitis"),
+        Path("/vitis/2025.2/Vitis"),
+        Path("/vitis/2025.1/Vitis"),
+        Path("/vitis/2024.2/Vitis"),
+        Path("/opt/Xilinx/2025.2/Vitis"),
+        Path("/opt/Xilinx/2024.2/Vitis"),
     ]
     if vitis_root is None:
         for cand in vitis_candidates:
@@ -259,6 +270,16 @@ def detect_toolchain(cli_aietools: str | None, cli_vitis: str | None) -> Toolcha
                 break
         if vpp is not None:
             break
+
+    if vitis_root is not None:
+        for inc in [
+            vitis_root / "include",
+            vitis_root / "common" / "technology" / "autopilot",
+            vitis_root.parent / "lnx64" / "tools" / "vcxx" / "data" / "include",
+            vitis_root.parent / "lnx64" / "tools" / "vcxx" / "data" / "autopilot",
+        ]:
+            if inc.exists():
+                include_dirs.append(inc)
 
     # Fallback: PATH
     if xchesscc is None:
@@ -525,7 +546,8 @@ def _inject_aie_includes(code: str) -> str:
 
 
 _MISSING_HEADER_RE = re.compile(
-    r"fatal error: '?([^\s':]+\.h(?:pp)?)'?(?::|:?\s+file not found|:?\s+No such file or directory)"
+    r"(?:fatal error|error): '?([^\s':]+\.(?:h|hh|hpp|hxx))'?(?::|:?\s+file not found|:?\s+No such file or directory)",
+    re.IGNORECASE,
 )
 _SYSTEM_HEADER_PREFIXES = ("asm/", "bits/", "gnu/", "linux/", "sys/")
 
@@ -535,9 +557,16 @@ def _extract_missing_headers(stderr: str) -> list[str]:
     seen: set[str] = set()
     for hdr in _MISSING_HEADER_RE.findall(stderr or ""):
         # Keep path-like include names, but avoid obviously unsafe paths.
-        if hdr.startswith("/") or ".." in hdr.replace("\\", "/"):
+        if hdr.startswith("/"):
             continue
-        key = hdr.strip()
+        key = posixpath.normpath(hdr.replace("\\", "/").strip()).replace("\\", "/")
+        if key.startswith("../"):
+            clamped = key
+            while clamped.startswith("../"):
+                clamped = clamped[3:]
+            key = f"../{clamped}" if clamped else ""
+        if key in {"", "."} or key.startswith("/"):
+            continue
         if key.startswith(_SYSTEM_HEADER_PREFIXES):
             continue
         if not key or key in seen:
@@ -675,6 +704,63 @@ def _make_workdir(base: Path) -> Path:
     return sub
 
 
+def _generated_graph_main_for_text(text: str) -> tuple[str, str]:
+    """Return an optional graph instance declaration and a tiny x86sim main."""
+    main_match = re.search(r"\bint\s+main\s*\(", text)
+    if main_match:
+        main_prefix = text[max(0, main_match.start() - 160):main_match.start()]
+        if "__X86SIM__" in main_prefix or "__ADF_FRONTEND__" in main_prefix or "__AIESIM__" not in main_prefix:
+            return "", ""
+        # AIE examples often guard simulator mains behind __AIESIM__, but the
+        # aiecompiler frontend does not accept a raw -D flag.  If the guard
+        # lacks __X86SIM__, treat it as absent and append our validation-only
+        # main below.
+    graph_match = re.search(r"class\s+(\w+)\s*:\s*public\s+(?:adf::)?graph", text)
+    if not graph_match:
+        return "", ""
+
+    graph_class = graph_match.group(1)
+    instance_match = re.search(rf"\b{re.escape(graph_class)}\s+(\w+)\s*;", text)
+    if instance_match:
+        graph_instance = ""
+        graph_instance_name = instance_match.group(1)
+    else:
+        class_prefix = text[max(0, graph_match.start() - 160):graph_match.start()]
+        if re.search(r"template\s*<", class_prefix):
+            return "", ""
+        graph_instance_name = "auto_graph_instance"
+        graph_instance = f"\n{graph_class} {graph_instance_name};\n"
+
+    graph_main = (
+        f"\nint main(void) {{\n"
+        f"    {graph_instance_name}.init();\n"
+        f"    {graph_instance_name}.run(1);\n"
+        f"    {graph_instance_name}.end();\n"
+        f"    return 0;\n"
+        f"}}\n"
+    )
+    return graph_instance, graph_main
+
+
+def _looks_like_graph_source(rel_path: str, text: str) -> bool:
+    rel_lower = rel_path.lower()
+    name = Path(rel_lower).name
+    if rel_lower.endswith(("graph.cpp", "graph.cc", "graph.cxx")):
+        return True
+    if name in {"project.cpp", "project.cc", "project.cxx", "test.cpp", "test.cc", "test.cxx"}:
+        return "adf.h" in text or ".init(" in text or "connect<" in text
+    return bool(re.search(r"\bint\s+main\s*\(", text) and re.search(r"\.\s*(?:init|run|end)\s*\(", text))
+
+
+def _looks_like_graph_header(rel_path: str, text: str) -> bool:
+    rel_lower = rel_path.lower()
+    if not rel_lower.endswith((".h", ".hh", ".hpp", ".hxx")):
+        return False
+    if re.search(r"class\s+\w+\s*:\s*public\s+(?:adf::)?graph", text):
+        return True
+    return Path(rel_lower).name in {"graph.h", "graph.hpp", "project.h", "project.hpp"}
+
+
 def _compile_kernel(
     tc: Toolchain,
     code: str,
@@ -762,40 +848,29 @@ def _compile_graph(
         graph_header_text = ""
         graph_sources = [
             path for rel_path, path in materialized.items()
-            if rel_path.lower().endswith(("graph.cpp", "graph.cc", "graph.cxx"))
+            if path.suffix.lower() in {".cpp", ".cc", ".cxx"} and _looks_like_graph_source(
+                rel_path,
+                path.read_text(encoding="utf-8"),
+            )
         ]
         if graph_sources:
             src = graph_sources[0]
+            all_text = "\n".join(path.read_text(encoding="utf-8") for path in materialized.values())
+            graph_instance, graph_main = _generated_graph_main_for_text(all_text)
+            if graph_main:
+                with src.open("a", encoding="utf-8") as handle:
+                    handle.write(graph_instance)
+                    handle.write(graph_main)
         else:
             graph_headers = [
                 rel_path for rel_path in materialized
-                if rel_path.lower().endswith("graph.h")
+                if _looks_like_graph_header(rel_path, materialized[rel_path].read_text(encoding="utf-8"))
             ]
             header_rel = graph_headers[0] if graph_headers else next(iter(materialized.keys()))
             header_path = materialized.get(header_rel)
             if header_path is not None and header_path.exists():
                 graph_header_text = header_path.read_text(encoding="utf-8")
-            graph_instance = ""
-            graph_instance_name = ""
-            graph_match = re.search(r"class\s+(\w+)\s*:\s*public\s+(?:adf::)?graph", graph_header_text)
-            if graph_match:
-                graph_class = graph_match.group(1)
-                instance_match = re.search(rf"\b{re.escape(graph_class)}\s+(\w+)\s*;", graph_header_text)
-                if instance_match:
-                    graph_instance_name = instance_match.group(1)
-                else:
-                    graph_instance_name = "auto_graph_instance"
-                    graph_instance = f"\n{graph_class} {graph_instance_name};\n"
-            graph_main = ""
-            if graph_instance_name and not re.search(r"\bint\s+main\s*\(", graph_header_text):
-                graph_main = (
-                    f"\nint main(void) {{\n"
-                    f"    {graph_instance_name}.init();\n"
-                    f"    {graph_instance_name}.run(1);\n"
-                    f"    {graph_instance_name}.end();\n"
-                    f"    return 0;\n"
-                    f"}}\n"
-                )
+            graph_instance, graph_main = _generated_graph_main_for_text(graph_header_text)
             src = workdir / "graph.cpp"
             src.write_text(f'#include "{header_rel}"\n{graph_instance}{graph_main}', encoding="utf-8")
     else:
@@ -816,6 +891,8 @@ def _compile_graph(
     shim_dir = _linux_system_header_shim_dir(workdir)
     if shim_dir is not None:
         args += ["-I", str(shim_dir)]
+    for inc in tc.include_dirs:
+        args += ["-I", str(inc)]
     if include_dirs:
         for inc in include_dirs:
             args += ["-I", str(inc)]
@@ -1320,7 +1397,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="Vitis part for --target AIE-ML when using v++ fallback.")
     ap.add_argument("--timeout", type=int, default=60, help="Per-compile timeout (seconds).")
     ap.add_argument("--limit", type=int, default=None, help="Cap total compile jobs.")
-    ap.add_argument("--workdir", default=None, help="Scratch dir root (default: %TEMP%/aie_validate)")
+    ap.add_argument("--workdir", default=None, help="Scratch dir root (default: %%TEMP%%/aie_validate)")
     ap.add_argument("--keep-workdir", action="store_true", help="Don't delete per-job dirs.")
     ap.add_argument(
         "--missing-dependency-mode",
