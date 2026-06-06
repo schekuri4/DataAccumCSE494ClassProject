@@ -21,6 +21,9 @@ data/processed/v10_group_holdout/
 | `aie_instruction_v10_quarantine.jsonl` | Tool-failure/no-result rows kept out of normal repair training |
 | `aie_instruction_v10_removed_duplicates.jsonl` | Removed duplicate rows for auditability |
 | `manifest_summary_v10.json` | Row counts, leakage checks, filter reasons |
+| `aie_instruction_v10_clean_pass.jsonl` | Compile-clean golden projects where the expected response is `NO_CHANGE` |
+| `aie_instruction_v10_*_with_clean.jsonl` | Repair splits plus clean/pass examples |
+| `manifest_summary_v10_with_clean.json` | Counts for the repair-plus-clean companion dataset |
 
 Current v10 headline stats:
 
@@ -35,6 +38,8 @@ Current v10 headline stats:
 | Duplicate-hash overlap across splits | 0 |
 | Quarantined rows | 1,322 |
 | Removed duplicate rows | 147 |
+| Clean/pass rows | 207 |
+| Repair + clean rows | 5,383 |
 | Unique bug types | 150 |
 | Bug count per variant | Random 1-4 |
 | Max variants per corpus project | 40 |
@@ -118,6 +123,7 @@ outputs/v9_corpus_build/
 | `scripts/build_v7_bug_dataset.py` | Dataset materializer and mutator application engine |
 | `scripts/merge_v7_datasets.py` | Merges shard outputs into train/validation/all JSONL files |
 | `scripts/prepare_v10_dataset.py` | Builds the group-held-out, deduped, clean-log v10 dataset |
+| `scripts/add_clean_pass_examples.py` | Adds compile-clean `NO_CHANGE` examples from golden projects |
 | `scripts/audit_v9_baselines.py` | Audits golden corpus baseline compile success |
 | `scripts/hydrate_golden_missing_files.py` | Fetches missing repo-local headers/source files into corpus projects |
 | `scripts/scrape_golden_aie_examples.py` | Scrapes candidate golden AIE examples |
@@ -196,6 +202,17 @@ python scripts\prepare_v10_dataset.py `
   --input data\processed\v9_dataset_40variants\aie_instruction_v9_all.jsonl `
   --out-dir data\processed\v10_group_holdout
 ```
+
+Add clean/pass `NO_CHANGE` examples from the compile-clean golden corpus:
+
+```powershell
+python scripts\add_clean_pass_examples.py `
+  --v10-dir data\processed\v10_group_holdout `
+  --golden-root "golden repos" `
+  --project-list outputs\v9_corpus_build\manifests\compile_clean_v9_toward200_projects.txt
+```
+
+For repair-only training, use `aie_instruction_v10_train.jsonl`. For repair plus clean/no-change behavior, use `aie_instruction_v10_train_with_clean.jsonl`.
 
 ## Useful Checks
 
