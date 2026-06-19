@@ -157,6 +157,38 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
                             'description': description,
                         })
 
+    # Real ADF graphs often connect RTP values through kernel parameter/input
+    # endpoints rather than a separately declared port array, e.g.:
+    #   connect<parameter>(alpha, async(k.in[2]));
+    #   location<parameter>(k.param[1]) = offset(0);
+    # When no RTP array declaration exists, mutate those parameter endpoint
+    # indices to a clearly out-of-range value.
+    if not candidates:
+        endpoint_pattern = re.compile(
+            r'((?:async\s*\(\s*)?\w+\s*\.(?:in|param)\s*\[\s*)(\d+)(\s*\])'
+        )
+        for file_path, content in project_files.items():
+            if not _is_graph_file(file_path):
+                continue
+            if 'parameter' not in content and 'async(' not in content:
+                continue
+            for m in endpoint_pattern.finditer(content):
+                current_idx = int(m.group(2))
+                new_idx = current_idx + 16
+                candidates.append({
+                    'file_path': file_path,
+                    'bug_type': BUG_FAMILY['bug_type'],
+                    'category': BUG_FAMILY['category'],
+                    'start': m.start(2),
+                    'end': m.end(2),
+                    'original': m.group(2),
+                    'replacement': str(new_idx),
+                    'description': (
+                        f"Changed RTP parameter endpoint index from {current_idx} "
+                        f"to {new_idx}, making the parameter port reference out of range."
+                    ),
+                })
+
     return candidates
 
 

@@ -27,10 +27,13 @@ BUG_FAMILY = {
 }
 
 # Pattern to match the #include <aie_api/aie_adf.hpp> line (with optional surrounding whitespace)
-_INCLUDE_PATTERN = re.compile(r'^[ \t]*#\s*include\s*<aie_api/aie_adf\.hpp>\s*\n?', re.MULTILINE)
+_INCLUDE_PATTERN = re.compile(
+    r'^[ \t]*#\s*include\s*(?:<aie_api/aie_adf\.hpp>|"aie_api/aie_adf\.hpp")\s*\n?',
+    re.MULTILINE
+)
 
 # Patterns to detect usage of readincr_v or writeincr_v
-_USAGE_PATTERN = re.compile(r'\b(readincr_v|writeincr_v)\b')
+_USAGE_PATTERN = re.compile(r'\b(?:readincr_v|writeincr_v|window_readincr_v|window_writeincr_v)\b')
 
 
 def _is_kernel_source(file_path: str) -> bool:

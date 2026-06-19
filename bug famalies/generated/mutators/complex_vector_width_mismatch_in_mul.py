@@ -11,7 +11,11 @@ BUG_FAMILY = {
         "aie::vector<cint16,",
         "aie::vector<cint32,",
         "aie::mul",
-        "aie::mac"
+        "aie::mac",
+        "v8cint16",
+        "v16cint16",
+        "mul4",
+        "mac4"
     ],
     "mutation_strategy": "Change the vector width of one operand in a complex multiply from the correct lane count (e.g., aie::vector<cint16, 8>) to a mismatched width (e.g., aie::vector<cint16, 4> or aie::vector<cint16, 16>) that has no valid intrinsic mapping for the given operation.",
     "repair_expectation": "Restore the vector width to the architecturally supported lane count for the complex multiply intrinsic (e.g., 8 lanes for cint16 x cint16).",
@@ -55,7 +59,11 @@ def _file_is_kernel_source(path):
 
 def _has_mul_or_mac_context(content):
     """Check if file contains aie::mul or aie::mac usage."""
-    return 'aie::mul' in content or 'aie::mac' in content
+    return (
+        'aie::mul' in content or 'aie::mac' in content or
+        '::aie::mul' in content or '::aie::mac' in content or
+        re.search(r'\b(?:mul|mac|lmul)\d+\s*\(', content) is not None
+    )
 
 
 def find_mutation_candidates(project_files):
@@ -63,8 +71,9 @@ def find_mutation_candidates(project_files):
     
     # Pattern to match aie::vector<cint16, N> or aie::vector<cint32, N>
     vec_pattern = re.compile(
-        r'(aie::vector\s*<\s*(cint16|cint32)\s*,\s*)(\d+)(\s*>)'
+        r'((?:::)?aie::vector\s*<\s*(cint16|cint32)\s*,\s*)(\d+)(\s*>)'
     )
+    legacy_vec_pattern = re.compile(r'\bv(4|8|16|32)cint(16|32)\b')
     
     for file_path, content in project_files.items():
         if not _file_is_kernel_source(file_path):
@@ -84,7 +93,11 @@ def find_mutation_candidates(project_files):
             context_end = min(len(lines), line_idx + 6)
             context_block = '\n'.join(lines[context_start:context_end])
             
-            has_mul_mac_nearby = ('aie::mul' in context_block or 'aie::mac' in context_block)
+            has_mul_mac_nearby = (
+                'aie::mul' in context_block or 'aie::mac' in context_block or
+                '::aie::mul' in context_block or '::aie::mac' in context_block or
+                re.search(r'\b(?:mul|mac|lmul)\d+\s*\(', context_block) is not None
+            )
             
             for match in vec_pattern.finditer(line):
                 if not has_mul_mac_nearby:
@@ -115,6 +128,30 @@ def find_mutation_candidates(project_files):
                     "description": (
                         f"Changed complex vector width from {width} to {mismatch_width} "
                         f"for {ctype} in mul/mac context, creating an unsupported lane count."
+                    )
+                })
+
+            for match in legacy_vec_pattern.finditer(line):
+                if not has_mul_mac_nearby:
+                    continue
+                width = int(match.group(1))
+                ctype = "cint" + match.group(2)
+                mismatch_width = _pick_mismatch(width)
+                original_text = match.group(0)
+                replacement_text = f"v{mismatch_width}{ctype}"
+                abs_start = offset + match.start()
+                abs_end = offset + match.end()
+                candidates.append({
+                    "file_path": file_path,
+                    "bug_type": "complex_vector_width_mismatch_in_mul",
+                    "category": "complex_intrinsics",
+                    "start": abs_start,
+                    "end": abs_end,
+                    "original": original_text,
+                    "replacement": replacement_text,
+                    "description": (
+                        f"Changed legacy complex vector width from {width} to "
+                        f"{mismatch_width} in a mul/mac context."
                     )
                 })
             

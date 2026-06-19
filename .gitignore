@@ -77,3 +77,15 @@ data/processed/taxonomy_source_files.txt
 
 # Local Bedrock secrets for bug-family generation
 bug famalies/secrets.json
+
+# Temporary NIM-authored mutator staging and validation reports
+bug famalies/generated/mutators_nim_staging/
+bug famalies/generated/staged_mutator_validation_report.json
+
+# Temporary mutator audit/validation artifacts
+bug famalies/generated/mutator_quality_audit.md
+bug famalies/generated/remaining_mutator_*.csv
+bug famalies/generated/remaining_mutator_*.json
+bug famalies/generated/remaining_mutator_*.md
+bug famalies/generated/mutators/__pycache__/
+scripts/__pycache__/

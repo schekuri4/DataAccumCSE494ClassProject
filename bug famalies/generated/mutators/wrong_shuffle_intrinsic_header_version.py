@@ -21,12 +21,15 @@ BUG_FAMILY = {
 }
 
 # Pattern to match the include directive for aie_api/aie.hpp
-_INCLUDE_PATTERN = re.compile(r'^\s*#\s*include\s*<\s*aie_api/aie\.hpp\s*>', re.MULTILINE)
+_INCLUDE_PATTERN = re.compile(
+    r'^\s*#\s*include\s*(?:<\s*aie_api/aie\.hpp\s*>|"aie_api/aie\.hpp")',
+    re.MULTILINE
+)
 
 # Patterns to detect shuffle usage
 _SHUFFLE_PATTERNS = [
-    re.compile(r'aie::shuffle_up'),
-    re.compile(r'aie::shuffle_down'),
+    re.compile(r'(?:::)?aie::shuffle_up'),
+    re.compile(r'(?:::)?aie::shuffle_down'),
     re.compile(r'\bshuffle_up\b'),
     re.compile(r'\bshuffle_down\b'),
 ]

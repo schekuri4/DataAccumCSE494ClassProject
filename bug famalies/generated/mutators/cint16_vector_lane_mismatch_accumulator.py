@@ -11,7 +11,10 @@ BUG_FAMILY = {
         "aie::vector<cint16,8>",
         "aie::vector<cint16,16>",
         "aie::accum<acc48,8>",
-        "aie::accum<acc48,16>"
+        "aie::accum<acc48,16>",
+        "v4cacc48",
+        "v8cacc48",
+        "v16cint16"
     ],
     "mutation_strategy": "Change the lane count of an acc48 accumulator so it does not match the lane count of the cint16 vector it is being assigned to or extracted from. For example, use aie::accum<acc48,16> with aie::vector<cint16,8> in a to_vector() or from_vector() call.",
     "repair_expectation": "Align the accumulator lane count with the vector lane count so both have the same number of lanes.",
@@ -34,13 +37,22 @@ def _flip_lane_count(lane_str):
     return None
 
 
+def _flip_legacy_cacc(token):
+    if token == "v4cacc48":
+        return "v8cacc48"
+    if token == "v8cacc48":
+        return "v4cacc48"
+    return None
+
+
 def find_mutation_candidates(project_files):
     candidates = []
 
     # Pattern to find acc48 accumulator declarations with lane count 8 or 16
     accum_pattern = re.compile(
-        r'aie::accum\s*<\s*acc48\s*,\s*(8|16)\s*>'
+        r'(?:::)?aie::accum\s*<\s*(?:acc48|cacc48)\s*,\s*(8|16)\s*>'
     )
+    legacy_cacc_pattern = re.compile(r'\bv[48]cacc48\b')
 
     for file_path, content in project_files.items():
         if not _is_kernel_source(file_path):
@@ -48,6 +60,9 @@ def find_mutation_candidates(project_files):
 
         # Check if file contains cint16 vectors (context for the bug)
         has_cint16_vector = bool(re.search(r'aie::vector\s*<\s*cint16\s*,\s*(8|16)\s*>', content))
+        has_cint16_vector = has_cint16_vector or bool(
+            re.search(r'\bv(?:8|16|32)cint16\b|\bcint16\b', content)
+        )
         if not has_cint16_vector:
             continue
 
@@ -80,6 +95,24 @@ def find_mutation_candidates(project_files):
                     f"Changed acc48 accumulator lane count from {lane_count} to "
                     f"{new_lane_count}, creating a mismatch with the cint16 vector "
                     f"lane count in {file_path}."
+                )
+            })
+
+        for match in legacy_cacc_pattern.finditer(content):
+            replacement = _flip_legacy_cacc(match.group(0))
+            if replacement is None:
+                continue
+            candidates.append({
+                "file_path": file_path,
+                "bug_type": BUG_FAMILY["bug_type"],
+                "category": BUG_FAMILY["category"],
+                "start": match.start(),
+                "end": match.end(),
+                "original": match.group(0),
+                "replacement": replacement,
+                "description": (
+                    f"Change legacy complex accumulator lane type {match.group(0)} "
+                    f"to {replacement}, mismatching surrounding cint16 lanes."
                 )
             })
 

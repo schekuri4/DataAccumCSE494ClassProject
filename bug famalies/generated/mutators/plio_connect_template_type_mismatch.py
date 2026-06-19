@@ -27,6 +27,15 @@ def _is_graph_file(filepath):
     return False
 
 
+def _line_offsets(lines):
+    offsets = []
+    pos = 0
+    for line in lines:
+        offsets.append(pos)
+        pos += len(line) + 1
+    return offsets
+
+
 def find_mutation_candidates(project_files):
     candidates = []
 
@@ -60,6 +69,7 @@ def find_mutation_candidates(project_files):
         has_plio = bool(re.search(r'(?:adf::)?(?:PLIO|plio|input_plio|output_plio)', content))
 
         lines = content.split('\n')
+        offsets = _line_offsets(lines)
 
         for line_idx, line in enumerate(lines):
             # Strategy 1: Find connect<> (empty/stream) near PLIO and mutate to window
@@ -77,8 +87,8 @@ def find_mutation_candidates(project_files):
                         "file_path": filepath,
                         "bug_type": "plio_connect_template_type_mismatch",
                         "category": "plio_ports",
-                        "start": {"line": line_idx + 1, "col": start + 1},
-                        "end": {"line": line_idx + 1, "col": end + 1},
+                        "start": offsets[line_idx] + start,
+                        "end": offsets[line_idx] + end,
                         "original": original,
                         "replacement": replacement,
                         "description": "Changed PLIO connect<> (stream) to connect<window<256>> causing type mismatch"
@@ -96,8 +106,8 @@ def find_mutation_candidates(project_files):
                         "file_path": filepath,
                         "bug_type": "plio_connect_template_type_mismatch",
                         "category": "plio_ports",
-                        "start": {"line": line_idx + 1, "col": start + 1},
-                        "end": {"line": line_idx + 1, "col": end + 1},
+                        "start": offsets[line_idx] + start,
+                        "end": offsets[line_idx] + end,
                         "original": original,
                         "replacement": replacement,
                         "description": "Changed PLIO connect<stream> to connect<window<256>> causing type mismatch"
@@ -109,8 +119,8 @@ def find_mutation_candidates(project_files):
                         "file_path": filepath,
                         "bug_type": "plio_connect_template_type_mismatch",
                         "category": "plio_ports",
-                        "start": {"line": line_idx + 1, "col": start + 1},
-                        "end": {"line": line_idx + 1, "col": end + 1},
+                        "start": offsets[line_idx] + start,
+                        "end": offsets[line_idx] + end,
                         "original": original,
                         "replacement": replacement2,
                         "description": "Changed PLIO connect<stream> to connect<parameter> causing type mismatch"
@@ -151,21 +161,10 @@ def apply_mutation(project_files, candidate):
     original = candidate["original"]
     replacement = candidate["replacement"]
 
-    # Find and replace the exact original text
-    # Use line-based replacement for precision
-    line_num = candidate["start"]["line"] - 1
-    lines = content.split('\n')
-
-    if line_num < len(lines):
-        line = lines[line_num]
-        # Replace first occurrence in this line
-        new_line = line.replace(original, replacement, 1)
-        if new_line != line:
-            lines[line_num] = new_line
-            new_files[filepath] = '\n'.join(lines)
-        else:
-            # Fallback: replace in full content
-            new_files[filepath] = content.replace(original, replacement, 1)
+    start = int(candidate["start"])
+    end = int(candidate["end"])
+    if content[start:end] == original:
+        new_files[filepath] = content[:start] + replacement + content[end:]
     else:
         new_files[filepath] = content.replace(original, replacement, 1)
 

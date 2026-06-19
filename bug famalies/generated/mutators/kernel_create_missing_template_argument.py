@@ -103,6 +103,10 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
     # Pattern to find kernel::create< with optional adf:: prefix
     # We need to find the full expression including template args
     pattern = re.compile(r'(?:adf::)?kernel::create<')
+    create_function_template_pattern = re.compile(
+        r'((?:adf::)?kernel::create\s*\(\s*[A-Za-z_][A-Za-z0-9_:]*)(<)'
+    )
+    create_object_pattern = re.compile(r'(?:adf::)?kernel::create_object<')
 
     for file_path, content in project_files.items():
         if not _is_graph_header(file_path):
@@ -152,6 +156,48 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
                     "description": description
                 }
                 candidates.append(candidate)
+
+        for match in create_function_template_pattern.finditer(content):
+            angle_start = match.start(2)
+            angle_end = _find_matching_angle_bracket(content, angle_start)
+            if angle_end < 0:
+                continue
+            template_args = content[angle_start + 1:angle_end]
+            if not template_args.strip():
+                continue
+            original = content[match.start():angle_end + 1]
+            replacement = content[match.start():angle_start]
+            candidates.append({
+                "file_path": file_path,
+                "bug_type": "kernel_create_missing_template_argument",
+                "category": "graph_kernel_binding",
+                "start": match.start(),
+                "end": angle_end + 1,
+                "original": original,
+                "replacement": replacement,
+                "description": "Remove template arguments from function passed to kernel::create(...).",
+            })
+
+        for match in create_object_pattern.finditer(content):
+            angle_start = match.end() - 1
+            angle_end = _find_matching_angle_bracket(content, angle_start)
+            if angle_end < 0:
+                continue
+            template_args = content[angle_start + 1:angle_end]
+            if not template_args.strip():
+                continue
+            original = content[match.start():angle_end + 1]
+            replacement = content[match.start():angle_start]
+            candidates.append({
+                "file_path": file_path,
+                "bug_type": "kernel_create_missing_template_argument",
+                "category": "graph_kernel_binding",
+                "start": match.start(),
+                "end": angle_end + 1,
+                "original": original,
+                "replacement": replacement,
+                "description": "Remove template arguments from kernel::create_object<...>.",
+            })
 
     return candidates
 

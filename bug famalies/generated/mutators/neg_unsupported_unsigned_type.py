@@ -42,19 +42,19 @@ def find_mutation_candidates(project_files):
         # Look for patterns like: aie::neg(some_var) where some_var is declared as aie::vector<int8,...> etc.
         # We look for vector declarations with signed types and mutate them to unsigned
 
-        # Find aie::vector declarations with signed integer types
-        # Pattern: aie::vector<int8, N> or aie::vector<int16, N> or aie::vector<int32, N>
+        # Find aie::vector declarations with signed/float element types.
+        # Pattern: aie::vector<int8, N>, ::aie::vector<float, N>, etc.
         vec_decl_pattern = re.compile(
-            r'(aie::vector<)(int(?:8|16|32))(,\s*\d+\s*>)'
+            r'((?:::)?aie::vector\s*<\s*)(int(?:8|16|32)|int(?:8|16|32)_t|float)(\s*,\s*\d+\s*>)'
         )
 
         # First check if aie::neg is used in this file
-        if 'aie::neg' not in content:
+        if 'aie::neg' not in content and '::aie::neg' not in content:
             continue
 
         for match in vec_decl_pattern.finditer(content):
             signed_type = match.group(2)  # e.g., "int16"
-            unsigned_type = 'u' + signed_type  # e.g., "uint16"
+            unsigned_type = ('u' + signed_type).replace('_t', '') if signed_type.startswith('int') else 'uint16'
 
             original = match.group(0)
             replacement = match.group(1) + unsigned_type + match.group(3)
@@ -81,17 +81,27 @@ def find_mutation_candidates(project_files):
         # Look for aie::neg(expr) where we can wrap or change the argument type
         # Find patterns like: aie::neg(var) and check if we can introduce unsigned type
         neg_pattern = re.compile(
-            r'(aie::neg\s*\(\s*)([a-zA-Z_]\w*)(\s*\))'
+            r'((?:::)?aie::neg\s*\(\s*)([a-zA-Z_]\w*)(\s*\))'
         )
 
         for match in neg_pattern.finditer(content):
             var_name = match.group(2)
-            # Look for the variable's declaration to see if it's already signed
-            # If we already have candidates from strategy 1 for this file, skip duplicates
-            # This strategy: change the neg call to cast to unsigned first
-            # e.g., aie::neg(var) -> aie::neg(var.cast_to<uint16>()) -- but simpler:
-            # We can also just add a candidate that changes the neg argument type annotation
-            pass  # Strategy 1 is sufficient for most cases
+            namespace = "::aie::" if match.group(1).startswith("::aie::") else "aie::"
+            original = match.group(0)
+            replacement = f"{namespace}neg({namespace}broadcast<uint16, 16>(0))"
+            candidates.append({
+                "file_path": file_path,
+                "bug_type": "neg_unsupported_unsigned_type",
+                "category": "arithmetic_intrinsics",
+                "start": match.start(),
+                "end": match.end(),
+                "original": original,
+                "replacement": replacement,
+                "description": (
+                    f"Replace aie::neg({var_name}) with negation of an unsigned "
+                    f"uint16 vector, which is unsupported by the AIE API."
+                )
+            })
 
     return candidates
 

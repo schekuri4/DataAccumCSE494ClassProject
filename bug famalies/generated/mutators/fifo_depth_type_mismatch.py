@@ -48,6 +48,9 @@ def find_mutation_candidates(project_files):
     fifo_depth_pattern = re.compile(
         r'((?:adf::)?fifo_depth)\s*\(\s*(\d+)\s*\)'
     )
+    fifo_depth_assignment_pattern = re.compile(
+        r'((?:adf::)?fifo_depth\s*\(\s*[^)]*?\s*\)\s*=\s*)(\d+)(\s*;)'
+    )
     
     for filepath, content in project_files.items():
         if not _is_graph_file(filepath):
@@ -87,6 +90,24 @@ def find_mutation_candidates(project_files):
                     "end": end,
                     "original": full_match,
                     "replacement": replacement,
+                    "description": description
+                })
+
+        for match in fifo_depth_assignment_pattern.finditer(content):
+            int_value = match.group(2)
+            original = match.group(0)
+            for replacement_value, description in [
+                (f"{int_value}.5", f"Replace FIFO depth assignment {int_value} with float literal."),
+                (f"\"{int_value}\"", f"Replace FIFO depth assignment {int_value} with string literal."),
+            ]:
+                candidates.append({
+                    "file_path": filepath,
+                    "bug_type": BUG_FAMILY["bug_type"],
+                    "category": BUG_FAMILY["category"],
+                    "start": match.start(),
+                    "end": match.end(),
+                    "original": original,
+                    "replacement": match.group(1) + replacement_value + match.group(3),
                     "description": description
                 })
     

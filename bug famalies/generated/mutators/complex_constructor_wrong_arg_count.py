@@ -74,7 +74,7 @@ def find_mutation_candidates(project_files):
         # Search for patterns like cint16( or cint16{ with two arguments
         for ctype in complex_types:
             # Match both paren and brace initialization
-            pattern = re.compile(r'\b(' + re.escape(ctype) + r')\s*([({])')
+            pattern = re.compile(r'(\(?\b' + re.escape(ctype) + r'\)?\s*)([({])')
             for m in pattern.finditer(content):
                 type_name = m.group(1)
                 open_char = m.group(2)

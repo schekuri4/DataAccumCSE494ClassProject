@@ -24,7 +24,7 @@ BUG_FAMILY: dict[str, Any] = {
 
 def _find_vector_lane_count(file_content: str) -> int | None:
     """Try to find the lane count from aie::vector<int32, N> declarations."""
-    match = re.search(r'aie::vector\s*<\s*int32\s*,\s*(\d+)\s*>', file_content)
+    match = re.search(r'(?:::)?aie::vector\s*<\s*int32\s*,\s*(\d+)\s*>', file_content)
     if match:
         return int(match.group(1))
     return None
@@ -39,7 +39,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
             continue
 
         # Check if file contains relevant match targets
-        if 'aie::shuffle_up' not in content:
+        if 'shuffle_up' not in content:
             continue
 
         # Try to determine vector lane count from the file
@@ -49,7 +49,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
         # Pattern: aie::shuffle_up(expr, shift_amount)
         # We need to handle nested parentheses in the first argument
         pattern = re.compile(
-            r'(aie::shuffle_up\s*\()'  # function call start
+            r'((?:::)?aie::shuffle_up(?:_fill|_rotate)?\s*\()'  # function call start
         )
 
         for m in pattern.finditer(content):

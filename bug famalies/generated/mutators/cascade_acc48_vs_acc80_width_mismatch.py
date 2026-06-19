@@ -29,11 +29,11 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
     # Also matches cacc48, cacc80, and standalone acc48/acc80 in cascade contexts
     patterns = [
         # input_cascade<accXX> or output_cascade<accXX>
-        (re.compile(r'(input_cascade|output_cascade)\s*<\s*(acc48|acc80|cacc48|cacc80)\s*>'), 'cascade_port'),
+        (re.compile(r'(input_cascade|output_cascade)\s*<\s*(acc32|acc48|acc80|accfloat|cacc48|cacc80)\s*>'), 'cascade_port'),
         # Standalone cacc48/cacc80 (complex accumulator types used in cascade)
         (re.compile(r'\b(cacc48|cacc80)\b'), 'cacc_type'),
         # acc48/acc80 within angle brackets (template arguments for cascade)
-        (re.compile(r'<\s*(acc48|acc80)\s*>'), 'acc_template_arg'),
+        (re.compile(r'<\s*(acc32|acc48|acc80|accfloat)\s*>'), 'acc_template_arg'),
     ]
 
     # Target file extensions for kernel source and headers
@@ -62,10 +62,14 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
                     continue
 
                 # Determine replacement: swap 48 <-> 80
-                if acc_type in ('acc48', 'cacc48'):
+                if acc_type in ('acc32', 'acc48', 'cacc48'):
                     replacement = acc_type.replace('48', '80')
+                    if replacement == acc_type:
+                        replacement = 'acc80'
                 elif acc_type in ('acc80', 'cacc80'):
                     replacement = acc_type.replace('80', '48')
+                elif acc_type == 'accfloat':
+                    replacement = 'acc32'
                 else:
                     continue
 

@@ -42,7 +42,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
     # Pattern to find PLIO array declarations with a numeric size
     # Matches: input_plio varname[N] or adf::input_plio varname[N] etc.
     decl_pattern = re.compile(
-        r'(?:adf::)?(input_plio|output_plio)\s+(\w+)\s*\[\s*(\d+)\s*\]'
+        r'(?:adf::)?(input_plio|output_plio)\s+(\w+)\s*\[\s*([^\]]+)\s*\]'
     )
 
     # Pattern to find usage of PLIO array with an index: varname[index]
@@ -59,10 +59,14 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
 
         # Find all PLIO array declarations in this file
         declarations: dict[str, int] = {}
+        expression_declarations: dict[str, tuple[int, int, str]] = {}
         for m in decl_pattern.finditer(content):
             var_name = m.group(2)
-            array_size = int(m.group(3))
-            declarations[var_name] = array_size
+            size_expr = m.group(3).strip()
+            if size_expr.isdigit():
+                declarations[var_name] = int(size_expr)
+            else:
+                expression_declarations[var_name] = (m.start(3), m.end(3), size_expr)
 
         if not declarations:
             continue
@@ -105,6 +109,29 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
                             f"exceeding declared array size of {array_size}."
                         )
                     })
+
+        # Many real graph files declare PLIO arrays with macro/expression sizes:
+        #   input_plio A[mult_X * mult_Y];
+        # If indexed usages exist but the size is not statically numeric here,
+        # shrink the declaration expression to 1. That preserves the single
+        # mutator intent: valid existing accesses become out-of-range.
+        for var_name, (expr_start, expr_end, size_expr) in expression_declarations.items():
+            usage_re = re.compile(re.escape(var_name) + r'\s*\[')
+            if not usage_re.search(content):
+                continue
+            candidates.append({
+                "file_path": filepath,
+                "bug_type": "plio_array_index_exceeds_declaration",
+                "category": "graph_endpoint_indices",
+                "start": expr_start,
+                "end": expr_end,
+                "original": size_expr,
+                "replacement": "1",
+                "description": (
+                    f"Shrank PLIO array {var_name}[{size_expr}] to {var_name}[1], "
+                    f"making existing indexed accesses exceed the declaration."
+                )
+            })
 
     # Deduplicate: prefer highest index mutations (most likely to be the last valid one)
     # Sort by file_path and start position for determinism

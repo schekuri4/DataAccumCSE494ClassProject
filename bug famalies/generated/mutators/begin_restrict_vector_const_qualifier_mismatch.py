@@ -10,6 +10,8 @@ BUG_FAMILY: dict[str, Any] = {
     "artifact_handling": "modify_existing_file",
     "match_targets": [
         "aie::begin_restrict_vector<",
+        "aie::begin_vector<",
+        "aie::cbegin_vector<",
         "output_buffer",
         "input_buffer"
     ],
@@ -55,6 +57,12 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
         r'(\s*[^)]*\))'
     )
 
+    begin_vector_pattern = re.compile(
+        r'((?:::)?aie::)(begin_vector|cbegin_vector)(\s*<[^>]+>\s*\(\s*)'
+        r'(\w*(?:out|output|in|input)\w*)'
+        r'(\s*\))'
+    )
+
     kernel_extensions = ('.cc', '.cpp', '.h', '.hpp', '.c', '.cxx')
 
     for file_path, content in project_files.items():
@@ -63,7 +71,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
             continue
 
         # Check if file has relevant content
-        if 'aie::begin_restrict_vector' not in content:
+        if 'begin_restrict_vector' not in content and 'begin_vector' not in content:
             continue
 
         lines = content.split('\n')
@@ -133,6 +141,43 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
                         "replacement": replacement,
                         "description": desc
                     })
+
+            for match in begin_vector_pattern.finditer(line):
+                func = match.group(2)
+                buf_name = match.group(4)
+                lower_buf = buf_name.lower()
+                if func == "begin_vector" and ("out" in lower_buf or "output" in lower_buf):
+                    replacement_func = "cbegin_vector"
+                    desc = (
+                        "Use cbegin_vector on an output buffer, so writes through "
+                        "the iterator hit a const-qualifier compile error."
+                    )
+                elif func == "cbegin_vector" and ("in" in lower_buf or "input" in lower_buf):
+                    replacement_func = "begin_vector"
+                    desc = (
+                        "Use a mutable vector iterator on an input buffer, creating "
+                        "a read-only buffer constness mismatch."
+                    )
+                else:
+                    continue
+
+                full_match = match.group(0)
+                replacement = (
+                    match.group(1) + replacement_func + match.group(3) +
+                    buf_name + match.group(5)
+                )
+                start = offset + match.start()
+                end = offset + match.end()
+                candidates.append({
+                    "file_path": file_path,
+                    "bug_type": "begin_restrict_vector_const_qualifier_mismatch",
+                    "category": "vector_load_store",
+                    "start": start,
+                    "end": end,
+                    "original": full_match,
+                    "replacement": replacement,
+                    "description": desc
+                })
 
             offset += len(line) + 1  # +1 for newline
 

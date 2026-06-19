@@ -34,11 +34,14 @@ _EXTENSION_ALTERNATIVES = {
     ".cpp": [".cc", ".c", ".h"],
     ".c": [".cc", ".cpp", ".h"],
     ".h": [".cc", ".cpp", ".c"],
+    ".hpp": [".h", ".cpp", ".cc"],
+    ".cxx": [".cc", ".cpp", ".h"],
 }
 
 # Pattern to match adf::source(...) calls with a string literal containing a file path
 _ADF_SOURCE_PATTERN = re.compile(
-    r'(adf::source\s*\(\s*[^)]*?\s*"([^"]*\.(cc|cpp|c|h))")'
+    r'((?:adf::)?source\s*\(\s*[^)]*?\s*\)\s*=\s*)"([^"]*\.(cc|cpp|c|h|hpp|cxx))"',
+    re.MULTILINE
 )
 
 
@@ -63,7 +66,6 @@ def find_mutation_candidates(project_files):
 
         # Search for all adf::source() calls with file path strings
         for match in _ADF_SOURCE_PATTERN.finditer(content):
-            full_match = match.group(1)
             file_ref = match.group(2)
             ext = "." + match.group(3)
 
@@ -75,20 +77,12 @@ def find_mutation_candidates(project_files):
             # Use the first alternative as the replacement
             new_ext = alternatives[0]
 
-            # Find the exact position of the extension within the quoted string
-            # We want to replace just the extension in the path
-            # Find the quoted path string within the match
-            quote_pattern = re.compile(re.escape('"' + file_ref + '"'))
-            path_match = quote_pattern.search(content, match.start())
-            if not path_match:
-                continue
-
             original_str = '"' + file_ref + '"'
             new_file_ref = file_ref[:-len(ext)] + new_ext
             replacement_str = '"' + new_file_ref + '"'
 
-            start_pos = path_match.start()
-            end_pos = path_match.end()
+            start_pos = match.start(2) - 1
+            end_pos = match.end(2) + 1
 
             candidate = {
                 "file_path": file_path,

@@ -37,7 +37,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
     # adf::source(k_name) = "path/to/file.cc";
     # source(k_name) = "path/to/file.cc";
     source_pattern = re.compile(
-        r'((?:adf::)?source\s*\(\s*(\w+)\s*\)\s*=\s*"([^"]+)"\s*;)'
+        r'((?:adf::)?source\s*\(\s*([^)]+?)\s*\)\s*=\s*"([^"]+)"\s*;)'
     )
 
     # Pattern to match kernel::create calls like:
@@ -55,7 +55,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
             continue
 
         # Check if file contains relevant patterns
-        has_source = any(mt in content for mt in ["adf::source(", "source(k_"])
+        has_source = "source(" in content
         has_create = "kernel::create(" in content or "kernel::create<" in content
 
         if not (has_source and has_create):
@@ -93,11 +93,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
                     if path_i == path_j:
                         continue
 
-                    # Check that the kernel variable is in our create map
-                    if kernel_var_i not in kernel_func_map:
-                        continue
-
-                    func_name = kernel_func_map[kernel_var_i]
+                    func_name = kernel_func_map.get(kernel_var_i, kernel_var_i)
 
                     # Build the original full match and replacement
                     original_line = sm_i.group(1)
@@ -132,10 +128,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
             kernel_var = sm.group(2)
             current_path = sm.group(3)
 
-            if kernel_var not in kernel_func_map:
-                continue
-
-            func_name = kernel_func_map[kernel_var]
+            func_name = kernel_func_map.get(kernel_var, kernel_var)
 
             # Find other kernel source files in the project
             other_kernel_files = []

@@ -27,25 +27,36 @@ def _is_kernel_source(path):
 
 
 def _swap_acc_type(acc_type):
-    """Swap acc48 <-> acc80."""
+    """Swap accumulator precision tags to an incompatible width."""
     if acc_type == 'acc48':
         return 'acc80'
     elif acc_type == 'acc80':
         return 'acc48'
+    elif acc_type == 'acc64':
+        return 'acc48'
+    elif acc_type == 'cacc48':
+        return 'cacc80'
+    elif acc_type == 'cacc80':
+        return 'cacc48'
     return None
 
 
 def find_mutation_candidates(project_files):
     candidates = []
 
-    # Pattern 1: aie::accum<acc48, N> or aie::accum<acc80, N>
+    # Pattern 1: aie::accum<acc48, N> / ::aie::accum<acc64, N> etc.
     accum_pattern = re.compile(
-        r'(aie::accum\s*<\s*)(acc48|acc80)(\s*,\s*\d+\s*>)'
+        r'((?:::)?aie::accum\s*<\s*)(acc48|acc64|acc80|cacc48|cacc80)(\s*,\s*\d+\s*>)'
     )
 
-    # Pattern 2: aie::zeros<acc48, N>() or aie::zeros<acc80, N>()
+    # Pattern 2: aie::zeros<acc48, N>() / ::aie::zeros<acc64, N>()
     zeros_pattern = re.compile(
-        r'(aie::zeros\s*<\s*)(acc48|acc80)(\s*,\s*\d+\s*>\s*\(\s*\))'
+        r'((?:::)?aie::zeros\s*<\s*)(acc48|acc64|acc80|cacc48|cacc80)(\s*,\s*\d+\s*>\s*\(\s*\))'
+    )
+
+    # Legacy vector accumulator tokens used by older AIE kernels.
+    legacy_acc_pattern = re.compile(
+        r'\bv(\d+)(c?acc)(48|80)\b'
     )
 
     for file_path, content in project_files.items():
@@ -55,7 +66,8 @@ def find_mutation_candidates(project_files):
         # Check if file is relevant (contains sliding_mac context)
         has_sliding_mac = ('sliding_mac' in content or
                           'sliding_mac_ops' in content or
-                          ('.mac' in content and ('acc48' in content or 'acc80' in content)))
+                          'mac4' in content or
+                          ('.mac' in content and any(tag in content for tag in ('acc48', 'acc64', 'acc80'))))
 
         if not has_sliding_mac:
             continue
@@ -108,14 +120,35 @@ def find_mutation_candidates(project_files):
                 )
             })
 
+        for m in legacy_acc_pattern.finditer(content):
+            lane_count, prefix, width = m.groups()
+            original_acc = f"{prefix}{width}"
+            swapped_acc = _swap_acc_type(original_acc)
+            if swapped_acc is None:
+                continue
+            replacement_text = f"v{lane_count}{swapped_acc}"
+            candidates.append({
+                "file_path": file_path,
+                "bug_type": "sliding_mac_accumulator_type_wrong",
+                "category": "sliding_mul_and_mac",
+                "start": m.start(),
+                "end": m.end(),
+                "original": m.group(0),
+                "replacement": replacement_text,
+                "description": (
+                    f"Changed legacy accumulator vector token from {m.group(0)} "
+                    f"to {replacement_text}, causing a sliding MAC precision mismatch."
+                )
+            })
+
     # If no accum/zeros patterns found, try a simpler approach: swap standalone acc48/acc80
     # only in lines that also mention sliding_mac or .mac
     if not candidates:
-        standalone_pattern = re.compile(r'\b(acc48|acc80)\b')
+        standalone_pattern = re.compile(r'\b(acc48|acc64|acc80|cacc48|cacc80)\b')
         for file_path, content in project_files.items():
             if not _is_kernel_source(file_path):
                 continue
-            if 'sliding_mac' not in content and '.mac' not in content:
+            if 'sliding_mac' not in content and '.mac' not in content and 'mac4' not in content:
                 continue
 
             lines = content.split('\n')

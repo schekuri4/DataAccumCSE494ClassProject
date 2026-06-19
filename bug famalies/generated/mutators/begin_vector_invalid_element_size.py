@@ -47,15 +47,18 @@ def _pick_invalid_replacement(original_value):
 
 def find_mutation_candidates(project_files):
     candidates = []
-    # Pattern to match aie::begin_vector<N>(...) where N is an integer
-    pattern = re.compile(r'(aie::begin_vector\s*<\s*)(\d+)(\s*>)')
+    # Pattern to match aie::begin_vector<N>(...), ::aie::begin_vector<N>(...),
+    # and cbegin/begin_restrict variants where N is an integer.
+    pattern = re.compile(
+        r'((?:::)?aie::(?:c?begin|begin_restrict)_vector\s*<\s*)(\d+)(\s*>)'
+    )
 
     for file_path, content in project_files.items():
         if not _is_kernel_source(file_path):
             continue
 
         # Check if file has any of the match targets (at least begin_vector)
-        has_begin_vector = 'aie::begin_vector<' in content or 'aie::begin_vector <' in content
+        has_begin_vector = 'begin_vector' in content or 'begin_restrict_vector' in content
         if not has_begin_vector:
             continue
 

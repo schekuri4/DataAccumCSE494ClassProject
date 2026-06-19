@@ -49,9 +49,9 @@ def _find_gmio_declarations(content):
 def _find_connect_statements(content):
     """Find all connect<...>(...) statements and extract source/dest arguments."""
     results = []
-    # Match connect< ... >( src , dst )
+    # Match connect< ... >( src , dst ) and plain adf::connect(src, dst)
     pattern = re.compile(
-        r'(adf::)?connect\s*<[^>]*>\s*\(\s*([^,]+?)\s*,\s*([^)]+?)\s*\)',
+        r'(adf::)?connect(?:\s*<[^>]*>)?\s*\(\s*([^,]+?)\s*,\s*([^)]+?)\s*\)',
         re.MULTILINE
     )
     for m in pattern.finditer(content):

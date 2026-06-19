@@ -32,6 +32,15 @@ def _is_kernel_source(path):
     return any(path.endswith(ext) for ext in ('.cpp', '.cc', '.h', '.hpp', '.c'))
 
 
+def _line_offsets(lines):
+    offsets = []
+    pos = 0
+    for line in lines:
+        offsets.append(pos)
+        pos += len(line) + 1
+    return offsets
+
+
 def find_mutation_candidates(project_files):
     candidates = []
 
@@ -40,6 +49,7 @@ def find_mutation_candidates(project_files):
             continue
 
         lines = content.split('\n')
+        offsets = _line_offsets(lines)
 
         # Strategy 1: Find accumulator declarations/assignments using from_vector or aie::zeros
         # and replace with aie::broadcast using incompatible type
@@ -63,8 +73,8 @@ def find_mutation_candidates(project_files):
                     "file_path": file_path,
                     "bug_type": "accum_broadcast_invalid_type",
                     "category": "accumulator_types",
-                    "start": {"line": line_idx, "col": start_col},
-                    "end": {"line": line_idx, "col": end_col},
+                    "start": offsets[line_idx] + start_col,
+                    "end": offsets[line_idx] + end_col,
                     "original": original,
                     "replacement": replacement,
                     "description": f"Replace {acc_type} zero-initialization with aie::broadcast<float> (incompatible type for integer accumulator)"
@@ -84,8 +94,8 @@ def find_mutation_candidates(project_files):
                     "file_path": file_path,
                     "bug_type": "accum_broadcast_invalid_type",
                     "category": "accumulator_types",
-                    "start": {"line": line_idx, "col": m.start(1)},
-                    "end": {"line": line_idx, "col": m.end(1)},
+                    "start": offsets[line_idx] + m.start(1),
+                    "end": offsets[line_idx] + m.end(1),
                     "original": original,
                     "replacement": replacement,
                     "description": f"Replace from_vector<{acc_type}> initialization with aie::broadcast<float> (type mismatch)"
@@ -110,8 +120,8 @@ def find_mutation_candidates(project_files):
                     "file_path": file_path,
                     "bug_type": "accum_broadcast_invalid_type",
                     "category": "accumulator_types",
-                    "start": {"line": line_idx, "col": m.start(5)},
-                    "end": {"line": line_idx, "col": m.end(5)},
+                    "start": offsets[line_idx] + m.start(5),
+                    "end": offsets[line_idx] + m.end(5),
                     "original": original,
                     "replacement": replacement,
                     "description": f"Replace {acc_type} accumulator initialization with aie::broadcast<float> (incompatible scalar type for integer accumulator)"
@@ -133,8 +143,8 @@ def find_mutation_candidates(project_files):
                     "file_path": file_path,
                     "bug_type": "accum_broadcast_invalid_type",
                     "category": "accumulator_types",
-                    "start": {"line": line_idx, "col": m.start(1)},
-                    "end": {"line": line_idx, "col": m.end(1)},
+                    "start": offsets[line_idx] + m.start(1),
+                    "end": offsets[line_idx] + m.end(1),
                     "original": original,
                     "replacement": replacement,
                     "description": "Replace integer broadcast with float broadcast (incompatible with integer accumulator)"
@@ -149,26 +159,15 @@ def apply_mutation(project_files, candidate):
         return dict(project_files)
 
     content = project_files[file_path]
-    lines = content.split('\n')
-
-    line_idx = candidate["start"]["line"]
-    col_start = candidate["start"]["col"]
-    col_end = candidate["end"]["col"]
+    start = int(candidate["start"])
+    end = int(candidate["end"])
     original = candidate["original"]
     replacement = candidate["replacement"]
 
-    line = lines[line_idx]
-
-    # Verify the original text is at the expected position
-    if line[col_start:col_end] == original:
-        new_line = line[:col_start] + replacement + line[col_end:]
+    if content[start:end] == original:
+        new_content = content[:start] + replacement + content[end:]
     else:
-        # Fallback: replace first occurrence in the line
-        new_line = line.replace(original, replacement, 1)
-
-    lines[line_idx] = new_line
-
-    new_content = '\n'.join(lines)
+        new_content = content.replace(original, replacement, 1)
     result = dict(project_files)
     result[file_path] = new_content
     return result

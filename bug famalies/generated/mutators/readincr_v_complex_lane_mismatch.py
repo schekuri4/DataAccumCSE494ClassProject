@@ -62,6 +62,7 @@ def find_mutation_candidates(project_files):
 
     # Pattern matches readincr_v<N> or writeincr_v<N>
     pattern = re.compile(r'((?:readincr_v|writeincr_v)\s*<\s*)(\d+)(\s*>)')
+    legacy_pattern = re.compile(r'\b(readincr_v|writeincr_v)(4|8|16|32)\b')
 
     for filepath, content in project_files.items():
         if not _is_kernel_source(filepath):
@@ -114,6 +115,31 @@ def find_mutation_candidates(project_files):
                 )
             }
             candidates.append(candidate)
+
+        for match in legacy_pattern.finditer(content):
+            complex_type = _detect_complex_type_context(content, match.start(), match.end())
+            if complex_type is None:
+                continue
+            lane_count = int(match.group(2))
+            valid_lanes = VALID_LANES.get(complex_type)
+            if lane_count != valid_lanes:
+                continue
+            invalid_lanes = INVALID_REPLACEMENTS.get(valid_lanes)
+            if invalid_lanes is None:
+                continue
+            candidates.append({
+                "file_path": filepath,
+                "bug_type": "readincr_v_complex_lane_mismatch",
+                "category": "complex_datatypes",
+                "start": match.start(),
+                "end": match.end(),
+                "original": match.group(0),
+                "replacement": match.group(1) + str(invalid_lanes),
+                "description": (
+                    f"Changed legacy {match.group(1)} lane count from "
+                    f"{valid_lanes} to {invalid_lanes} for {complex_type}."
+                )
+            })
 
     return candidates
 

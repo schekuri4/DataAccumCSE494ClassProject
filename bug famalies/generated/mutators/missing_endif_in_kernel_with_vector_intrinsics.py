@@ -57,7 +57,12 @@ def find_mutation_candidates(project_files):
         i = 0
         while i < len(lines):
             stripped = lines[i].strip()
-            if stripped == '#ifdef __AIESIM__' or stripped.startswith('#ifdef __AIESIM__'):
+            if (
+                stripped == '#ifdef __AIESIM__' or
+                stripped.startswith('#ifdef __AIESIM__') or
+                stripped.startswith('#if') or
+                stripped.startswith('#ifndef')
+            ):
                 ifdef_line = i
                 # Find the block content and matching #endif
                 nesting = 1
