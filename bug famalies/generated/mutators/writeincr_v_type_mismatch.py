@@ -204,6 +204,50 @@ def find_mutation_candidates(project_files):
                                 })
                             break  # Only one mutation per site
 
+        # Strategy 5: Legacy vector stream APIs use lane-count function names
+        # such as writeincr_v4(out, vec) or writeincr_v8(matC, ext_lo(acc)).
+        # In those cases the strongest single-span bug is to change the output
+        # stream element type in the kernel signature.
+        legacy_write_pattern = re.compile(
+            r'\bwriteincr_v(?:\s*<\s*\d+\s*>|\d+)\s*\(\s*(\w+)\s*,'
+        )
+        stream_param_pattern = re.compile(
+            r'((?:adf::)?output_stream\s*<\s*)(\w+)(\s*>\s*\*\s*(?:__restrict|restrict)?\s*{name}\b)|'
+            r'(output_stream_)(acc48|acc80|int8|int16|int32|float)(\s*\*\s*(?:__restrict|restrict)?\s*{name}\b)'
+        )
+        for wm in legacy_write_pattern.finditer(content):
+            stream_var = wm.group(1)
+            typed_stream_re = re.compile(stream_param_pattern.pattern.format(name=re.escape(stream_var)))
+            for sm in typed_stream_re.finditer(content):
+                if sm.group(2):
+                    elem_type = sm.group(2)
+                    replacement_type = _TYPE_SUBSTITUTIONS.get(elem_type, "float" if elem_type != "float" else "int32")
+                    original_text = sm.group(1) + elem_type + sm.group(3)
+                    replacement_text = sm.group(1) + replacement_type + sm.group(3)
+                else:
+                    elem_type = sm.group(5)
+                    replacement_type = _TYPE_SUBSTITUTIONS.get(elem_type, "int32" if elem_type != "int32" else "cint16")
+                    original_text = sm.group(4) + elem_type + sm.group(6)
+                    replacement_text = sm.group(4) + replacement_type + sm.group(6)
+
+                if original_text == replacement_text:
+                    continue
+
+                candidates.append({
+                    "file_path": file_path,
+                    "bug_type": "writeincr_v_type_mismatch",
+                    "category": "stream_vector_interfaces",
+                    "start": sm.start(),
+                    "end": sm.end(),
+                    "original": original_text,
+                    "replacement": replacement_text,
+                    "description": (
+                        f"Changed output stream type for {stream_var} from '{elem_type}' "
+                        f"to '{replacement_type}', mismatching the writeincr_v payload."
+                    )
+                })
+                break
+
     # Deduplicate candidates by (file_path, start, end)
     seen = set()
     unique_candidates = []

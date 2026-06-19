@@ -94,6 +94,9 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
     path_in_string_pattern = re.compile(
         r'"([^"]*[/\\][^"]*\.[a-zA-Z]+)"'
     )
+    create_label_pattern = re.compile(
+        r'((?:input_gmio|output_gmio|adf::input_gmio|adf::output_gmio)::create\s*\(\s*)"([^"]+)"'
+    )
 
     for filepath, content in project_files.items():
         if not _is_target_file(filepath):
@@ -188,6 +191,31 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
                         )
                     })
             offset += len(line) + 1
+
+        # Strategy 3: Some graph sources model GMIO streams through named
+        # create calls rather than file-path strings. Convert the stream label
+        # to a path-like missing artifact so simulation/testbench wiring has a
+        # clear filename correction target.
+        for match in create_label_pattern.finditer(content):
+            label = match.group(2)
+            if '/' in label or '\\' in label:
+                continue
+            replacement_path = f"data/{label}_missing.txt"
+            original = '"' + label + '"'
+            replacement = '"' + replacement_path + '"'
+            candidates.append({
+                "file_path": filepath,
+                "bug_type": "gmio_filename_path_mismatch_in_sim",
+                "category": "gmio_ports",
+                "start": match.start(2) - 1,
+                "end": match.end(2) + 1,
+                "original": original,
+                "replacement": replacement,
+                "description": (
+                    f"Changed GMIO create label '{label}' to missing path "
+                    f"'{replacement_path}', creating a data-file mismatch signal."
+                )
+            })
 
     return candidates
 

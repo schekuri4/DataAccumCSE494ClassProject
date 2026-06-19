@@ -38,7 +38,8 @@ def _file_has_scalar_stream(content: str) -> bool:
     # Match input_stream_int32*, input_stream_float*, input_stream_int16*, etc.
     # but NOT input_stream<type, N> (templated vector streams)
     scalar_stream_pattern = re.compile(
-        r'input_stream_(int32|int16|int8|float|cint16|cint32)\s*\*'
+        r'(?:input_stream_(?:int32|int16|int8|float|cint16|cint32)|'
+        r'(?:adf::)?input_stream\s*<\s*(?:int32|int16|int8|float|cint16|cint32)\s*>)\s*\*'
     )
     return bool(scalar_stream_pattern.search(content))
 

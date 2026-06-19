@@ -10,6 +10,8 @@ BUG_FAMILY = {
     "match_targets": [
         "aie::interleave_zip",
         "aie::interleave_unzip",
+        "::aie::interleave_zip",
+        "::aie::interleave_unzip",
         "aie::vector<int32,16>",
         "aie::vector<int32,8>"
     ],
@@ -31,7 +33,7 @@ def find_mutation_candidates(project_files):
     # Pattern to find calls to aie::interleave_zip or aie::interleave_unzip
     # with two arguments that are both vectors of the same size
     interleave_call_pattern = re.compile(
-        r'(aie::interleave_(?:zip|unzip))\s*\(\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*\)'
+        r'((?:::)?aie::interleave_(?:zip|unzip))\s*\(\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*(?:,\s*[^)]*)?\)'
     )
     
     # Pattern to find vector declarations with lane counts
@@ -99,10 +101,40 @@ def find_mutation_candidates(project_files):
         # variable declarations, try to mutate the call itself by looking for
         # inline template arguments or find declarations with different patterns
         
+        # Common fallback: interleave_zip(a, b, step). Make the second operand
+        # a concatenated vector so its lane count no longer matches the first.
+        generic_interleave_pattern = re.compile(
+            r'((?:::)?aie::interleave_(?:zip|unzip)\s*\(\s*)'
+            r'([A-Za-z_]\w*)'
+            r'(\s*,\s*)'
+            r'([A-Za-z_]\w*)'
+            r'(\s*,\s*[^)]*\))'
+        )
+        for m in generic_interleave_pattern.finditer(content):
+            original = m.group(0)
+            replacement = (
+                m.group(1) + m.group(2) + m.group(3) +
+                "::aie::concat(" + m.group(4) + ", " + m.group(4) + ")" +
+                m.group(5)
+            )
+            candidates.append({
+                "file_path": file_path,
+                "bug_type": "interleave_mismatched_vector_sizes",
+                "category": "vector_shuffles_and_permutations",
+                "start": m.start(),
+                "end": m.end(),
+                "original": original,
+                "replacement": replacement,
+                "description": (
+                    "Replace the second interleave operand with concat(arg, arg), "
+                    "doubling its lanes and creating a vector size mismatch."
+                )
+            })
+
         # Also look for cases where vectors are declared and used in interleave
         # but with template syntax in the call itself
         template_interleave_pattern = re.compile(
-            r'(aie::interleave_(?:zip|unzip))\s*\(\s*'
+            r'((?:::)?aie::interleave_(?:zip|unzip))\s*\(\s*'
             r'(aie::vector\s*<\s*(\w+)\s*,\s*(\d+)\s*>\s*\([^)]*\))\s*,\s*'
             r'(aie::vector\s*<\s*(\w+)\s*,\s*(\d+)\s*>\s*\([^)]*\))\s*\)'
         )

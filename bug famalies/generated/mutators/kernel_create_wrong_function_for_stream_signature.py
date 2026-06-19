@@ -35,7 +35,11 @@ def _is_graph_header(file_path: str) -> bool:
 
 def _file_has_stream_context(content: str) -> bool:
     """Check if file references stream types, indicating stream-based kernels."""
-    return ('input_stream' in content or 'output_stream' in content)
+    return (
+        'input_stream' in content or 'output_stream' in content or
+        'connect<stream' in content or 'input_plio' in content or
+        'output_plio' in content
+    )
 
 
 def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, object]]:
@@ -45,6 +49,11 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
     # Captures the full match and the function name inside angle brackets
     kernel_create_pattern = re.compile(
         r'((?:adf::)?kernel::create\s*<\s*)([A-Za-z_][A-Za-z0-9_:]*)\s*(>\s*\()'
+    )
+    plain_kernel_create_pattern = re.compile(
+        r'((?:adf::)?kernel::create\s*\(\s*)'
+        r'([A-Za-z_][A-Za-z0-9_:]*(?:\s*<[^;\n()]*>)?)'
+        r'(\s*\))'
     )
 
     for file_path, content in project_files.items():
@@ -79,6 +88,24 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
                     f"Changed kernel::create<{original_func_name}> to "
                     f"kernel::create<{mutated_func_name}> — referencing a function "
                     f"with a mismatched signature (window instead of stream pointers)."
+                )
+            })
+
+        for match in plain_kernel_create_pattern.finditer(content):
+            original_func_name = match.group(2).strip()
+            mutated_func_name = original_func_name + "_window_variant"
+
+            candidates.append({
+                "file_path": file_path,
+                "bug_type": BUG_FAMILY["bug_type"],
+                "category": BUG_FAMILY["category"],
+                "start": match.start(),
+                "end": match.end(),
+                "original": match.group(0),
+                "replacement": match.group(1) + mutated_func_name + match.group(3),
+                "description": (
+                    f"Change kernel::create({original_func_name}) to "
+                    f"kernel::create({mutated_func_name}) for a stream graph."
                 )
             })
 

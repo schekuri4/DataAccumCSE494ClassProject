@@ -14,6 +14,7 @@ BUG_FAMILY = {
         "connect<cascade, cascade>",
         "connect<stream, cascade>",
         "connect<cascade, stream>",
+        "connect<cascade>",
         "adf::connect"
     ],
     "mutation_strategy": "Replace a valid connect<cascade, cascade> template instantiation with connect<stream, cascade> or connect<cascade, stream>, creating a type mismatch between the port types and the connect template parameters.",
@@ -54,6 +55,12 @@ def find_mutation_candidates(project_files):
         r'(\s*,\s*)'                           # group 3: comma with spaces
         r'(cascade)'                            # group 4: second template param
         r'(\s*>)'                              # group 5: closing >
+    )
+
+    single_arg_pattern = re.compile(
+        r'((?:adf\s*::\s*)?connect\s*<\s*)'
+        r'(cascade)'
+        r'(\s*>)'
     )
     
     replacements = [
@@ -98,6 +105,26 @@ def find_mutation_candidates(project_files):
                     "replacement": replacement,
                     "description": description,
                 })
+
+        for match in single_arg_pattern.finditer(content):
+            original = match.group(0)
+            replacement = match.group(1) + "stream" + match.group(3)
+            if replacement == original:
+                continue
+            candidates.append({
+                "file_path": file_path,
+                "bug_type": BUG_FAMILY["bug_type"],
+                "category": BUG_FAMILY["category"],
+                "start": match.start(),
+                "end": match.end(),
+                "original": original,
+                "replacement": replacement,
+                "description": (
+                    "Replace connect<cascade> with connect<stream> on an "
+                    "existing cascade edge, creating a graph template/port "
+                    "type mismatch."
+                ),
+            })
     
     return candidates
 

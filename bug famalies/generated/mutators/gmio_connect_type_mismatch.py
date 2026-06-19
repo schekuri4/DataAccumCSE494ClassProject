@@ -66,13 +66,13 @@ def find_mutation_candidates(project_files):
         # Pattern for connect<> or connect<adf::stream> statements
         # adf::connect<> name(port1, port2) or adf::connect<>(port1, port2)
         connect_pattern = re.compile(
-            r'(adf::connect\s*<\s*(adf::stream)?\s*>)\s*'
+            r'((?:adf::)?connect\s*<\s*(?:(?:adf::)?stream)?\s*>)\s*'
             r'(\w+)?\s*\(\s*([^)]+)\)'
         )
 
         for m in connect_pattern.finditer(content):
             full_connect = m.group(1)
-            args = m.group(4)
+            args = m.group(3)
 
             # Check if any gmio member is referenced in the connect arguments
             involves_gmio = False
@@ -98,10 +98,10 @@ def find_mutation_candidates(project_files):
                 continue
 
             # Create mutation: replace connect<> or connect<adf::stream> with connect<adf::window<128>>
-            replacement = "adf::connect<adf::window<128>>"
             start = m.start(1)
             end = m.end(1)
             original = full_connect
+            replacement = "connect<window<128>>" if not original.startswith("adf::") else "adf::connect<adf::window<128>>"
 
             candidates.append({
                 "file_path": filepath,
@@ -120,7 +120,7 @@ def find_mutation_candidates(project_files):
         # Strategy 2: Find adf::connect<adf::window<N>> that involves gmio and change to connect<>
         # (reverse mutation for files that already have the bug pattern inverted)
         window_connect_pattern = re.compile(
-            r'(adf::connect\s*<\s*adf::window\s*<\s*\d+\s*>\s*>)\s*'
+            r'((?:adf::)?connect\s*<\s*(?:adf::)?window\s*<\s*\d+\s*>\s*>)\s*'
             r'(\w+)?\s*\(\s*([^)]+)\)'
         )
 
@@ -153,8 +153,8 @@ def find_mutation_candidates(project_files):
                 full_connect = m.group(1)
                 start = m.start(1)
                 end = m.end(1)
-                replacement = "adf::connect<adf::window<128>>"
                 original = full_connect
+                replacement = "connect<window<128>>" if not original.startswith("adf::") else "adf::connect<adf::window<128>>"
 
                 # Avoid duplicates
                 already = any(c["start"] == start and c["file_path"] == filepath for c in candidates)

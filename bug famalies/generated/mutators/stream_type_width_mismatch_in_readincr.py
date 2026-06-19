@@ -34,11 +34,17 @@ _STREAM_TYPE_REPLACEMENTS = {
     "output_stream_int32": "output_stream_int16",
     "output_stream_int16": "output_stream_int32",
     "output_stream_float": "output_stream_int32",
+    "input_stream<int32>": "input_stream<int16>",
+    "input_stream<int16>": "input_stream<int32>",
+    "input_stream<float>": "input_stream<int32>",
+    "output_stream<int32>": "output_stream<int16>",
+    "output_stream<int16>": "output_stream<int32>",
+    "output_stream<float>": "output_stream<int32>",
 }
 
 # Pattern to match stream type declarations in function parameters
 _STREAM_PARAM_PATTERN = re.compile(
-    r'\b((?:input|output)_stream_(?:int32|int16|float))\s*\*'
+    r'\b((?:input|output)_stream_(?:int32|int16|float)|(?:input|output)_stream\s*<\s*(?:int32|int16|float)\s*>)\s*\*'
 )
 
 
@@ -53,7 +59,7 @@ def _is_kernel_file(file_path):
 
 def _file_uses_readincr_or_writeincr(content):
     """Check if file contains readincr or writeincr usage."""
-    return 'readincr(' in content or 'writeincr(' in content
+    return 'readincr(' in content or 'writeincr(' in content or 'readincr_v' in content or 'writeincr_v' in content
 
 
 def find_mutation_candidates(project_files):
@@ -81,10 +87,11 @@ def find_mutation_candidates(project_files):
         # Find all stream type parameter declarations
         for match in _STREAM_PARAM_PATTERN.finditer(content):
             original_type = match.group(1)
-            if original_type not in _STREAM_TYPE_REPLACEMENTS:
+            normalized_type = re.sub(r'\s+', '', original_type)
+            if normalized_type not in _STREAM_TYPE_REPLACEMENTS:
                 continue
 
-            replacement_type = _STREAM_TYPE_REPLACEMENTS[original_type]
+            replacement_type = _STREAM_TYPE_REPLACEMENTS[normalized_type]
 
             start = match.start(1)
             end = match.end(1)

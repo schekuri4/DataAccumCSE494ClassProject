@@ -35,26 +35,24 @@ def _is_kernel_source(file_path: str) -> bool:
 def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, object]]:
     candidates = []
 
-    # Pattern 1: method call style - something.from_vector(vec, shift) or something.from_vector<type>(vec, shift)
-    # We want to match .from_vector<...>(arg1, arg2) or .from_vector(arg1, arg2) with at least 2 arguments
-    # The key is to find from_vector calls that have a comma (indicating shift parameter)
-    
-    # Pattern for .from_vector<optional_template>(args_with_comma)
+    # Pattern 1: method call style - something.template from_vector(vec, shift)
+    # or something.from_vector(vec, shift). Keep this on one expression so the
+    # repair remains a single exact replacement.
     pattern_method = re.compile(
-        r'(\.from_vector\s*(?:<[^>]*>)?\s*\()'  # group 1: .from_vector<...>(
-        r'([^,)]+)'                               # group 2: first argument (vector)
-        r'(\s*,\s*)'                              # group 3: comma and whitespace
-        r'([^)]+)'                                # group 4: second argument (shift)
-        r'(\))'                                   # group 5: closing paren
+        r'(\.(?:template\s+)?from_vector\s*(?:<[^>]*>)?\s*\()'
+        r'([^;\n,]+(?:\([^;\n]*\))?)'
+        r'(\s*,\s*)'
+        r'([^;\n)]+)'
+        r'(\))'
     )
 
-    # Pattern for free function style: from_vector<acc48>(vec, shift) or from_vector<acc80>(vec, shift)
+    # Pattern for free function style: ::aie::from_vector<acc32>(vec, shift)
     pattern_free = re.compile(
-        r'(from_vector\s*<[^>]*>\s*\()'           # group 1: from_vector<type>(
-        r'([^,)]+)'                               # group 2: first argument
-        r'(\s*,\s*)'                              # group 3: comma
-        r'([^)]+)'                                # group 4: shift argument
-        r'(\))'                                   # group 5: closing paren
+        r'((?:(?:::)?aie\s*::\s*)?from_vector\s*<[^>]*>\s*\()'
+        r'([^;\n,]+(?:\([^;\n]*\))?)'
+        r'(\s*,\s*)'
+        r'([^;\n)]+)'
+        r'(\))'
     )
 
     for file_path, content in project_files.items():

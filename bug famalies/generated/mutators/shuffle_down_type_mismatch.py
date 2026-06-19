@@ -9,6 +9,8 @@ BUG_FAMILY = {
     "artifact_handling": "modify_existing_file",
     "match_targets": [
         "aie::shuffle_down",
+        "::aie::shuffle_down",
+        "aie::shuffle_down_fill",
         "aie::vector<cint16,",
         "aie::vector<int16,"
     ],
@@ -35,7 +37,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
     # Strategy 1: Find shuffle_down calls and try to introduce type mismatch
     # by changing one of the vector arguments in the call
     shuffle_pattern = re.compile(
-        r'(aie::shuffle_down\s*\(\s*)([a-zA-Z_]\w*)(\s*,\s*)([a-zA-Z_]\w*)(\s*,\s*[^)]+\))'
+        r'((?:::)?aie::shuffle_down(?:_fill|_rotate)?\s*\(\s*)([a-zA-Z_]\w*)(\s*,\s*)([a-zA-Z_]\w*)(\s*,\s*[^)]+\))'
     )
     
     # Also look for vector declarations to understand types
@@ -49,7 +51,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
             continue
         
         # Check if file contains relevant match targets
-        has_shuffle_down = 'aie::shuffle_down' in content
+        has_shuffle_down = 'shuffle_down' in content
         has_cint16_vec = 'aie::vector<cint16,' in content
         has_int16_vec = 'aie::vector<int16,' in content
         
@@ -188,7 +190,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
     if not candidates:
         # Try a broader pattern that handles template arguments in the call
         broad_pattern = re.compile(
-            r'(aie::shuffle_down\s*(?:<[^>]*>\s*)?\(\s*)'
+            r'((?:::)?aie::shuffle_down(?:_fill|_rotate)?\s*(?:<[^>]*>\s*)?\(\s*)'
             r'([^,]+?)'
             r'(\s*,\s*)'
             r'([^,]+?)'
@@ -198,7 +200,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
         for file_path, content in project_files.items():
             if not any(file_path.endswith(ext) for ext in ['.cc', '.cpp', '.h', '.hpp', '.c']):
                 continue
-            if 'aie::shuffle_down' not in content:
+            if 'shuffle_down' not in content:
                 continue
             
             for m in broad_pattern.finditer(content):
@@ -230,7 +232,31 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
                     "replacement": replacement,
                     "description": f"Replace second argument in aie::shuffle_down with {mismatch_expr} to introduce type mismatch between vector element types."
                 })
-    
+    # Two-argument shuffle_down(vec, amount) forms are common. Replacing the
+    # numeric amount with a vector expression creates a direct argument type
+    # mismatch without needing declaration recovery.
+    two_arg_pattern = re.compile(
+        r'((?:::)?aie::shuffle_down(?:_rotate)?\s*\(\s*[^,\n]+,\s*)'
+        r'(\d+)'
+        r'(\s*\))'
+    )
+    for file_path, content in project_files.items():
+        if not any(file_path.endswith(ext) for ext in ['.cc', '.cpp', '.h', '.hpp', '.c']):
+            continue
+        for m in two_arg_pattern.finditer(content):
+            original = m.group(0)
+            replacement = m.group(1) + "::aie::zeros<int16, 16>()" + m.group(3)
+            candidates.append({
+                "file_path": file_path,
+                "bug_type": "shuffle_down_type_mismatch",
+                "category": "vector_shuffles_and_permutations",
+                "start": m.start(),
+                "end": m.end(),
+                "original": original,
+                "replacement": replacement,
+                "description": "Replace shuffle_down numeric amount with a vector expression.",
+            })
+
     return candidates
 
 

@@ -28,6 +28,7 @@ BUG_FAMILY: dict[str, Any] = {
 
 # Valid Points values commonly supported by AIE hardware
 _VALID_POINTS = {4, 8, 16, 32}
+_POINT_TOKENS = r'(?:\d+|Points|TP_POINTS|kPoints|points)'
 
 # Map from valid points to an invalid replacement
 def _get_invalid_points(original_val: int) -> int:
@@ -55,17 +56,19 @@ def _is_kernel_source(file_path: str) -> bool:
 def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, object]]:
     candidates: list[dict[str, object]] = []
 
-    # Pattern to match aie::sliding_mul_ops or aie::sliding_mul_sym_ops with template parameters
+    # Pattern to match old ops-style APIs and modern direct calls:
+    #   aie::sliding_mul_ops<Lanes, Points, ...>
+    #   ::aie::sliding_mac<Lanes, Points, ...>(...)
     # We look for the template instantiation and try to identify the Lanes and Points parameters.
     # Common forms:
     #   aie::sliding_mul_ops<Lanes, Points, ...>
     #   aie::sliding_mul_sym_ops<Lanes, Points, ...>
     # The first two template params are typically Lanes and Points (integers).
     pattern = re.compile(
-        r'(aie::sliding_mul(?:_sym)?_ops\s*<\s*)'  # group 1: prefix up to first param
-        r'(\d+)'                                      # group 2: Lanes
+        r'((?:::)?aie::sliding_m(?:ul|ac)(?:_sym)?(?:_ops)?\s*<\s*)'  # group 1: prefix up to first param
+        r'([^,>]+)'                                   # group 2: Lanes
         r'(\s*,\s*)'                                  # group 3: separator
-        r'(\d+)'                                      # group 4: Points
+        r'(' + _POINT_TOKENS + r')'                   # group 4: Points
         r'(\s*[,>])'                                  # group 5: rest (comma or closing >)
     )
 
@@ -74,21 +77,18 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
             continue
 
         # Check if file contains relevant constructs
-        if 'sliding_mul_ops' not in content and 'sliding_mul_sym_ops' not in content:
+        if 'sliding_mul' not in content and 'sliding_mac' not in content:
             continue
 
         for match in pattern.finditer(content):
             points_str = match.group(4)
-            try:
+            if points_str.isdigit():
                 points_val = int(points_str)
-            except ValueError:
-                continue
-
-            # Only mutate if the current value looks valid
-            if points_val not in _VALID_POINTS:
-                continue
-
-            invalid_points = _get_invalid_points(points_val)
+                if points_val not in _VALID_POINTS:
+                    continue
+                invalid_points = _get_invalid_points(points_val)
+            else:
+                invalid_points = 5
 
             # Full matched text
             original_text = match.group(0)
@@ -106,7 +106,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
                 "original": original_text,
                 "replacement": replacement_text,
                 "description": (
-                    f"Changed Points template parameter from {points_val} to {invalid_points} "
+                    f"Changed Points template parameter from {points_str} to {invalid_points} "
                     f"in {match.group(1).strip()} at offset {start}, "
                     f"introducing an unsupported tap count for the architecture."
                 )

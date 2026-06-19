@@ -11,6 +11,8 @@ BUG_FAMILY: dict[str, Any] = {
     "match_targets": [
         "aie::shuffle_up",
         "aie::shuffle_down",
+        "::aie::shuffle_up",
+        "::aie::shuffle_down",
         "aie::vector<int16,",
     ],
     "mutation_strategy": "Apply aie::shuffle_up or aie::shuffle_down on an int16 vector whose lane count is not a supported width for shuffle operations (e.g., use a 4-lane int16 vector when only 16 or 32 lanes are supported for shuffle intrinsics).",
@@ -49,7 +51,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
         # lane count, and mutate N to an invalid lane count.
         # This targets vectors that are likely used with shuffle_up/shuffle_down.
         pattern_vector = re.compile(
-            r'(aie::vector\s*<\s*int16\s*,\s*)(\d+)(\s*>)'
+            r'((?:::)?aie::vector\s*<\s*(?:int16|int16_t)\s*,\s*)(\d+)(\s*>)'
         )
         for match in pattern_vector.finditer(content):
             lane_count = int(match.group(2))
@@ -79,7 +81,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
         # Also handle cases where the vector is declared with a template alias or
         # the lane count appears in a shuffle call context.
         pattern_shuffle = re.compile(
-            r'(aie::shuffle_(?:up|down)\s*\(\s*\w+\s*,\s*)(\d+)(\s*\))'
+            r'((?:::)?aie::shuffle_(?:up|down)(?:_fill|_rotate)?\s*\(\s*\w+\s*,\s*)(\d+)(\s*\))'
         )
         for match in pattern_shuffle.finditer(content):
             # The second argument is the shift amount, not lane count.
@@ -89,7 +91,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
         # Strategy 3: Find shuffle_up/shuffle_down calls on vectors and if the
         # vector type is templated inline like aie::shuffle_up(aie::vector<int16,N>...)
         pattern_inline = re.compile(
-            r'(aie::shuffle_(?:up|down)\s*[^;]*aie::vector\s*<\s*int16\s*,\s*)(\d+)(\s*>)'
+            r'((?:::)?aie::shuffle_(?:up|down)(?:_fill|_rotate)?\s*[^;]*(?:::)?aie::vector\s*<\s*(?:int16|int16_t)\s*,\s*)(\d+)(\s*>)'
         )
         for match in pattern_inline.finditer(content):
             lane_count = int(match.group(2))

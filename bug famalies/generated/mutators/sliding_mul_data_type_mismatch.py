@@ -41,13 +41,18 @@ BUG_FAMILY: dict[str, Any] = {
 # Mapping of AIE types to incompatible replacements for mutation
 _TYPE_MUTATIONS: dict[str, str] = {
     "int16": "float",
+    "int16_t": "float",
     "int32": "cint32",
+    "int32_t": "cint32",
     "cint16": "cint32",
     "cint32": "float",
     "float": "int16",
     "int8": "float",
+    "int8_t": "float",
     "uint8": "cint16",
+    "uint8_t": "cint16",
     "uint16": "cint32",
+    "uint16_t": "cint32",
 }
 
 # Known AIE data types to look for in template parameters
@@ -61,10 +66,10 @@ def _is_kernel_source(path: str) -> bool:
 
 
 def _find_sliding_ops_instances(content: str):
-    """Find all aie::sliding_mul_ops or aie::sliding_mac_ops template instantiations."""
-    # Match the full template parameter list for sliding_mul_ops or sliding_mac_ops
+    """Find all sliding_mul/sliding_mac template instantiations."""
+    # Match old ops-style and modern direct APIs.
     pattern = re.compile(
-        r'(aie::sliding_m(?:ul|ac)_ops)\s*<([^>]+)>'
+        r'((?:::)?aie::sliding_m(?:ul|ac)(?:_ops)?)\s*<([^>]+)>'
     )
     return list(pattern.finditer(content))
 
@@ -145,6 +150,53 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
 
                 param_offset = param_pos_in_template + len(param)
 
+        if 'sliding_mul' in content or 'sliding_mac' in content or 'mul4' in content or 'mac4' in content:
+            # Modern sliding APIs often infer coefficient/data element types
+            # from nearby vector declarations instead of spelling them in the
+            # template argument list.
+            vector_decl_pattern = re.compile(
+                r'\b(v(?:4|8|16|32)(?:c?int(?:8|16|32)|float)|'
+                r'(?:const\s+)?(?:int16_t|int32_t|uint8_t|uint16_t|float))\b'
+            )
+            for decl_match in vector_decl_pattern.finditer(content):
+                original_type = decl_match.group(1)
+                normalized = original_type
+                replacement_type = None
+                if original_type.startswith('v'):
+                    vector_map = {
+                        'v4int16': 'v4float',
+                        'v8int16': 'v8float',
+                        'v16int16': 'v16float',
+                        'v32int16': 'v32float',
+                        'v4cint16': 'v4cint32',
+                        'v8cint16': 'v8cint32',
+                        'v16cint16': 'v16cint32',
+                        'v4int32': 'v4cint32',
+                        'v8int32': 'v8cint32',
+                        'v16int32': 'v16cint32',
+                    }
+                    replacement_type = vector_map.get(original_type)
+                else:
+                    normalized = original_type.replace('const ', '')
+                    replacement_type = _get_incompatible_type(normalized)
+
+                if replacement_type is None:
+                    continue
+
+                candidates.append({
+                    "file_path": file_path,
+                    "bug_type": "sliding_mul_data_type_mismatch",
+                    "category": "sliding_mul_and_mac",
+                    "start": decl_match.start(1),
+                    "end": decl_match.end(1),
+                    "original": original_type,
+                    "replacement": replacement_type,
+                    "description": (
+                        f"Changed nearby sliding multiply data/coefficient type "
+                        f"from '{original_type}' to incompatible '{replacement_type}'."
+                    ),
+                })
+
         # Also look for using/typedef declarations that define DataType or CoeffType
         # used with sliding_mul/mac
         typedef_pattern = re.compile(
@@ -157,7 +209,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
                 continue
 
             # Check if this file also contains sliding_mul_ops or sliding_mac_ops
-            if 'sliding_mul_ops' not in content and 'sliding_mac_ops' not in content:
+            if 'sliding_mul' not in content and 'sliding_mac' not in content:
                 continue
 
             abs_start = td_match.start(2)

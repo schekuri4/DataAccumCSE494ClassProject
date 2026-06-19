@@ -42,13 +42,13 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
     # Pattern to find GMIO array declarations with their sizes
     # e.g., input_gmio gm_in[2]; or output_gmio gm_out[4];
     decl_pattern = re.compile(
-        r'\b((?:input_gmio|output_gmio)\s+(gm_\w+))\s*\[\s*(\d+)\s*\]'
+        r'\b((?:adf::)?(?:input_gmio|output_gmio)\s+(\w+))\s*\[\s*(\d+)\s*\]'
     )
 
     # Pattern to find usage of GMIO arrays with indices
     # e.g., gm_in[0], gm_out[1], used in connect<> or GMIO::create assignments
     usage_pattern = re.compile(
-        r'(gm_\w+)\s*\[\s*(\d+)\s*\]'
+        r'(\w+)\s*\[\s*(\d+)\s*\]'
     )
 
     for file_path, content in project_files.items():
@@ -56,7 +56,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
             continue
 
         # Check if file contains any of our match targets
-        has_match_target = any(mt in content for mt in BUG_FAMILY["match_targets"])
+        has_match_target = "gmio" in content.lower() or "GMIO" in content
         if not has_match_target:
             continue
 

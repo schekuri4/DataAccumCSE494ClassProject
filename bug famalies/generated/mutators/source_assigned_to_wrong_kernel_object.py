@@ -93,8 +93,12 @@ def find_mutation_candidates(project_files):
                     '"{}"'.format(a["source_path"])
                 )
 
-                # Original text is both statements in their original positions
-                # We describe the mutation as a swap
+                original_block = content[a["start"]:b["end"]]
+                replacement_block = (
+                    new_a
+                    + content[a["end"]:b["start"]]
+                    + new_b
+                )
                 description = (
                     f"Swap adf::source() assignments: "
                     f"{a['kernel_obj']} (was \"{a['source_path']}\") gets \"{b['source_path']}\" "
@@ -107,12 +111,9 @@ def find_mutation_candidates(project_files):
                     "category": BUG_FAMILY["category"],
                     "start": a["start"],
                     "end": b["end"],
-                    "original": (a["full_match"], b["full_match"]),
-                    "replacement": (new_a, new_b),
+                    "original": original_block,
+                    "replacement": replacement_block,
                     "description": description,
-                    # Extra info for apply_mutation
-                    "_swap_a": {"start": a["start"], "end": a["end"], "original": a["full_match"], "replacement": new_a},
-                    "_swap_b": {"start": b["start"], "end": b["end"], "original": b["full_match"], "replacement": new_b},
                 }
                 candidates.append(candidate)
 
@@ -124,18 +125,14 @@ def apply_mutation(project_files, candidate):
     filepath = candidate["file_path"]
     content = new_files[filepath]
 
-    swap_a = candidate["_swap_a"]
-    swap_b = candidate["_swap_b"]
-
-    # Apply replacements from end to start to preserve indices
-    # swap_b comes after swap_a (by construction: i < j means a.start < b.start)
-    new_content = (
-        content[:swap_a["start"]] +
-        swap_a["replacement"] +
-        content[swap_a["end"]:swap_b["start"]] +
-        swap_b["replacement"] +
-        content[swap_b["end"]:]
-    )
+    start = int(candidate["start"])
+    end = int(candidate["end"])
+    original = str(candidate["original"])
+    replacement = str(candidate["replacement"])
+    if content[start:end] == original:
+        new_content = content[:start] + replacement + content[end:]
+    else:
+        new_content = content.replace(original, replacement, 1)
 
     new_files[filepath] = new_content
     return new_files

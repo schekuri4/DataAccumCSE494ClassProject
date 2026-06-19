@@ -169,30 +169,34 @@ def find_mutation_candidates(project_files):
             matches = list(include_pattern.finditer(content))
             if matches:
                 last_include = matches[-1]
-                insert_pos = last_include.end()
-                original = ""
-                replacement = "\n#include <aie_api/aie.hpp>"
+                insert_start = last_include.start()
+                insert_end = last_include.end()
+                original = content[insert_start:insert_end]
+                replacement = original + "\n#include <aie_api/aie.hpp>"
 
                 candidates.append({
                     "file_path": file_path,
                     "bug_type": "including_aie_header_in_host_compilation_context",
                     "category": "include_headers",
-                    "start": insert_pos,
-                    "end": insert_pos,
+                    "start": insert_start,
+                    "end": insert_end,
                     "original": original,
                     "replacement": replacement,
                     "description": f"Add unguarded #include <aie_api/aie.hpp> to {file_path} which is compiled by the host compiler."
                 })
             elif content:
+                newline = content.find('\n')
+                anchor_end = newline + 1 if newline >= 0 else min(len(content), 1)
+                original = content[:anchor_end]
                 # Insert at beginning of file
                 candidates.append({
                     "file_path": file_path,
                     "bug_type": "including_aie_header_in_host_compilation_context",
                     "category": "include_headers",
                     "start": 0,
-                    "end": 0,
-                    "original": "",
-                    "replacement": "#include <aie_api/aie.hpp>\n",
+                    "end": anchor_end,
+                    "original": original,
+                    "replacement": "#include <aie_api/aie.hpp>\n" + original,
                     "description": f"Add unguarded #include <aie_api/aie.hpp> at the top of {file_path} which is compiled by the host compiler."
                 })
 

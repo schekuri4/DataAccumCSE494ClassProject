@@ -138,17 +138,19 @@ def find_mutation_candidates(project_files):
             char_pos = 0
             for i in range(insert_line_idx):
                 char_pos += len(lines[i]) + 1  # +1 for newline
-            
-            # The original text at insertion point is empty (we're inserting)
-            original_text = ""
-            replacement_text = include_line + "\n"
-            
+            anchor_pos = 0
+            for i in range(max(0, insert_line_idx - 1)):
+                anchor_pos += len(lines[i]) + 1
+
+            original_text = kernel_content[anchor_pos:char_pos]
+            replacement_text = original_text + include_line + "\n"
+
             # For the candidate, use line-based start/end
             candidate = {
                 "file_path": kernel_h,
                 "bug_type": "circular_include_between_graph_and_kernel_headers",
                 "category": "include_headers",
-                "start": char_pos,
+                "start": anchor_pos,
                 "end": char_pos,
                 "original": original_text,
                 "replacement": replacement_text,
@@ -213,15 +215,19 @@ def find_mutation_candidates(project_files):
                     char_pos = 0
                     for i in range(insert_line_idx):
                         char_pos += len(lines[i]) + 1
-                    
+                    anchor_pos = 0
+                    for i in range(max(0, insert_line_idx - 1)):
+                        anchor_pos += len(lines[i]) + 1
+                    original_text = content_b[anchor_pos:char_pos]
+
                     candidate = {
                         "file_path": path_b,
                         "bug_type": "circular_include_between_graph_and_kernel_headers",
                         "category": "include_headers",
-                        "start": char_pos,
+                        "start": anchor_pos,
                         "end": char_pos,
-                        "original": "",
-                        "replacement": include_line + "\n",
+                        "original": original_text,
+                        "replacement": original_text + include_line + "\n",
                         "description": (
                             f"Add '#include \"{rel_path}\"' in '{path_b}' "
                             f"to create circular dependency with '{path_a}'. "

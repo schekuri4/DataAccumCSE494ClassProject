@@ -59,9 +59,9 @@ def find_mutation_candidates(project_files):
     # Pattern to match adf::source() calls with a string argument containing a relative path
     # Matches: adf::source("path/to/file.cc") or source("path/to/file.cc")
     pattern = re.compile(
-        r'((?:adf::)?source\s*\(\s*")'  # prefix: adf::source(" 
+        r'((?:adf::)?source\s*\(\s*[^)]*?\s*\)\s*=\s*")'
         r'([^"]+)'                        # the path string
-        r'("\s*\))'                        # closing ")
+        r'("\s*;?)'
     )
     
     for file_path, content in project_files.items():

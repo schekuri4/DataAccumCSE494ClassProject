@@ -108,11 +108,11 @@ def find_mutation_candidates(project_files):
                     "description": "Misspelled 'ratio' as 'rato' in adf::runtime<ratio> constraint"
                 })
 
-        # Match standalone runtime<ratio> (not preceded by adf::)
-        for m in re.finditer(r'(?<!::\s{0,5})(?<!\w)runtime\s*<\s*ratio\s*(?:\([^)]*\))?\s*>', content):
-            # Make sure it's not part of adf::runtime (check preceding text)
-            preceding = content[max(0, m.start()-10):m.start()]
-            if '::' in preceding:
+        # Match standalone runtime<ratio> and filter out namespace-qualified uses
+        # with ordinary Python logic rather than variable-width lookbehind.
+        for m in re.finditer(r'(?<!\w)runtime\s*<\s*ratio\s*(?:\([^)]*\))?\s*>', content):
+            preceding = content[max(0, m.start() - 16):m.start()]
+            if re.search(r'::\s*$', preceding):
                 continue
             original = m.group(0)
             replacement = re.sub(r'runtime', 'runetime', original, count=1)

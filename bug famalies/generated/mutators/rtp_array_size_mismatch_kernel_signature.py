@@ -55,7 +55,10 @@ def find_mutation_candidates(project_files):
     # More specific pattern for typed array references in function signatures
     # e.g., int32 (&coeff)[16]
     typed_array_ref_pattern = re.compile(
-        r'((?:int32|int16|int8|uint32|uint16|uint8|float|cint16|cint32)\s*\(\s*&\s*\w+\s*\)\s*\[)\s*(\d+)\s*(\])'
+        r'((?:int32|int16|int8|uint32|uint16|uint8|int32_t|int16_t|uint32_t|uint16_t|float|cint16|cint32)\s*\(\s*&\s*\w+\s*\)\s*\[)\s*(\d+)\s*(\])'
+    )
+    pointer_dimension_pattern = re.compile(
+        r'((?:dimensions|adf::dimensions)\s*\(\s*\w+\s*\)\s*=\s*\{\s*)(\d+)(\s*\})'
     )
 
     # Pattern for pointer-with-size style: type* name followed by size info
@@ -132,6 +135,25 @@ def find_mutation_candidates(project_files):
                         f"creating a mismatch with the graph dimensions() constraint."
                     )
                 })
+
+        for match in pointer_dimension_pattern.finditer(content):
+            original_size = int(match.group(2))
+            new_size = _pick_different_size(original_size)
+            if new_size == original_size:
+                continue
+            candidates.append({
+                "file_path": file_path,
+                "bug_type": BUG_FAMILY["bug_type"],
+                "category": BUG_FAMILY["category"],
+                "start": match.start(),
+                "end": match.end(),
+                "original": match.group(0),
+                "replacement": match.group(1) + str(new_size) + match.group(3),
+                "description": (
+                    f"Changed RTP dimensions size from {original_size} to {new_size}, "
+                    f"creating a mismatch with the kernel parameter contract."
+                )
+            })
 
     return candidates
 

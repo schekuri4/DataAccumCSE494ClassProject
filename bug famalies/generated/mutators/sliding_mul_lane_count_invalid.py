@@ -34,6 +34,7 @@ _INVALID_LANES = {
 
 # Fallback: if the current value isn't in our map, use these known-bad values
 _DEFAULT_INVALID = "6"
+_LANE_TOKENS = r'(?:\d+|Lanes|TP_LANES|kLanes|lanes)'
 
 
 def _is_kernel_source(path):
@@ -45,11 +46,15 @@ def _is_kernel_source(path):
 def find_mutation_candidates(project_files):
     candidates = []
 
-    # Pattern matches aie::sliding_mul_ops< Lanes, ... > or aie::sliding_mac_ops< Lanes, ... >
+    # Pattern matches old ops-style APIs and modern direct calls:
+    #   aie::sliding_mul_ops<4, ...>
+    #   ::aie::sliding_mul<Lanes, Points, ...>(...)
     # The Lanes parameter is the first template argument.
-    # We look for the pattern: aie::sliding_mul_ops<NUMBER or aie::sliding_mac_ops<NUMBER
     pattern = re.compile(
-        r'(aie::sliding_m(?:ul|ac)_ops\s*<\s*)(\d+)'
+        r'((?:::)?aie::sliding_m(?:ul|ac)(?:_ops)?\s*<\s*)(' + _LANE_TOKENS + r')'
+    )
+    legacy_pattern = re.compile(
+        r'\b((?:l)?(?:mul|mac))4((?:_(?:sym|antisym|ct|sym_ct))?\s*\()'
     )
 
     for file_path, content in project_files.items():
@@ -57,7 +62,7 @@ def find_mutation_candidates(project_files):
             continue
 
         # Check if file contains relevant constructs
-        if 'sliding_mul_ops' not in content and 'sliding_mac_ops' not in content:
+        if not any(token in content for token in ('sliding_mul', 'sliding_mac', 'mul4', 'mac4', 'lmul4')):
             continue
 
         for match in pattern.finditer(content):
@@ -68,6 +73,8 @@ def find_mutation_candidates(project_files):
             # Determine invalid replacement
             if lanes_value in _INVALID_LANES:
                 replacement = _INVALID_LANES[lanes_value]
+            elif not lanes_value.isdigit():
+                replacement = _DEFAULT_INVALID
             else:
                 # If it's already an invalid value, skip
                 # Pick a value that's definitely invalid
@@ -80,7 +87,7 @@ def find_mutation_candidates(project_files):
                 continue
 
             full_match_text = match.group(0)
-            op_type = "sliding_mul_ops" if "sliding_mul_ops" in full_match_text else "sliding_mac_ops"
+            op_type = "sliding_mac" if "sliding_mac" in full_match_text else "sliding_mul"
 
             candidate = {
                 "file_path": file_path,
@@ -97,6 +104,23 @@ def find_mutation_candidates(project_files):
                 )
             }
             candidates.append(candidate)
+
+        for match in legacy_pattern.finditer(content):
+            original_text = match.group(0)
+            replacement_text = f"{match.group(1)}6{match.group(2)}"
+            candidates.append({
+                "file_path": file_path,
+                "bug_type": "sliding_mul_lane_count_invalid",
+                "category": "sliding_mul_and_mac",
+                "start": match.start(),
+                "end": match.end(),
+                "original": original_text,
+                "replacement": replacement_text,
+                "description": (
+                    f"Changed legacy AIE intrinsic {original_text.rstrip('(')} to "
+                    f"{replacement_text.rstrip('(')}, introducing an unsupported lane count."
+                )
+            })
 
     return candidates
 
@@ -116,7 +140,7 @@ def apply_mutation(project_files, candidate):
     if content[start:end] != original:
         # Fallback: try to find and replace first occurrence
         pattern = re.compile(
-            r'(aie::sliding_m(?:ul|ac)_ops\s*<\s*)' + re.escape(original) + r'(?=\s*[,>])'
+            r'((?:::)?aie::sliding_m(?:ul|ac)(?:_ops)?\s*<\s*)' + re.escape(original) + r'(?=\s*[,>])'
         )
         match = pattern.search(content)
         if match:

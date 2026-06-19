@@ -34,10 +34,12 @@ def _is_kernel_source(path: str) -> bool:
 
 
 def _find_sliding_mul_ops_files(project_files: dict[str, str]) -> list[str]:
-    """Find files that contain aie::sliding_mul_ops usage."""
+    """Find files that contain sliding multiply/MAC usage."""
     results = []
     for path, content in project_files.items():
-        if _is_kernel_source(path) and 'sliding_mul' in content:
+        if _is_kernel_source(path) and any(token in content for token in (
+            'sliding_mul', 'sliding_mac', 'mul4', 'mac4', 'lmul4'
+        )):
             results.append(path)
     return results
 
@@ -56,7 +58,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
         # Pattern for template instantiation of sliding_mul_ops with template parameters
         # e.g., aie::sliding_mul_ops<Lanes, Points, CoeffStep, DataStepX, DataStepY, CoeffType, DataType>
         template_pattern = re.compile(
-            r'(aie::sliding_mul(?:_sym)?_ops\s*<[^>]*>)'
+            r'((?:::)?aie::sliding_mul(?:_sym)?(?:_ops)?\s*<[^>]*>)'
         )
 
         # Pattern for .mul( or .mac( calls with offset arguments
@@ -96,6 +98,58 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
                 "original": original_text,
                 "replacement": replacement_text,
                 "description": f"Set {param_type} ({var_name}) from {original_value} to {bad_value}, exceeding valid range for sliding_mul operation."
+            })
+
+        # Modern direct API forms:
+        #   ::aie::sliding_mul<...>(coeff, 0, data, 0)
+        #   ::aie::sliding_mac<...>(acc, coeff, 4, data, 0)
+        # This intentionally targets the first simple numeric offset after the
+        # template call prefix; it leaves expression offsets such as kmap[c_s]
+        # alone because those require semantic rewriting.
+        modern_call_offset = re.compile(
+            r'((?:::)?aie::sliding_m(?:ul|ac)\s*<[^>]+>\s*\((?:[^,()]+,\s*){1,2})'
+            r'(\d+)'
+        )
+        for m in modern_call_offset.finditer(content):
+            val = int(m.group(2))
+            bad_val = str(max(val + 16, 64))
+            candidates.append({
+                "file_path": file_path,
+                "bug_type": "sliding_mul_coefficient_offset_out_of_range",
+                "category": "sliding_mul_and_mac",
+                "start": m.start(2),
+                "end": m.end(2),
+                "original": m.group(2),
+                "replacement": bad_val,
+                "description": (
+                    f"Set sliding_mul/sliding_mac runtime offset from {val} to {bad_val}, "
+                    f"exceeding the valid coefficient/data vector range."
+                )
+            })
+
+        # Legacy intrinsic forms:
+        #   mul4_sym(lbuff, 6, ..., rbuff, 8, coeff, 0, ...)
+        # Mutating the first vector offset gives a compact, deterministic
+        # compile-time bounds failure without changing unrelated arguments.
+        legacy_call_offset = re.compile(
+            r'\b(?:l)?(?:mul|mac)4(?:_(?:sym|antisym|ct|sym_ct))?\s*'
+            r'\(\s*[^,]+,\s*(\d+)'
+        )
+        for m in legacy_call_offset.finditer(content):
+            val = int(m.group(1))
+            bad_val = str(max(val + 16, 64))
+            candidates.append({
+                "file_path": file_path,
+                "bug_type": "sliding_mul_coefficient_offset_out_of_range",
+                "category": "sliding_mul_and_mac",
+                "start": m.start(1),
+                "end": m.end(1),
+                "original": m.group(1),
+                "replacement": bad_val,
+                "description": (
+                    f"Set legacy sliding intrinsic offset from {val} to {bad_val}, "
+                    f"exceeding the valid vector range."
+                )
             })
 
         # Pattern for .mul(coeff, <number>, data, <number>) style calls
@@ -150,7 +204,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
         # e.g., aie::sliding_mul_ops<8, 8, 1, 1, 1, int16, int16>
         # Some variants include CoeffStart/DataStart as template params
         sliding_mul_template = re.compile(
-            r'(aie::sliding_mul(?:_sym)?_ops\s*<\s*'
+            r'((?:::)?aie::sliding_mul(?:_sym)?(?:_ops)?\s*<\s*'
             r'\d+\s*,\s*'   # Lanes
             r'\d+\s*,\s*'   # Points
             r'\d+\s*,\s*'   # CoeffStep
@@ -164,7 +218,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
         # Also look for sliding_mul_ops with explicit CoeffStart template param
         # Some APIs: aie::sliding_mul_ops<Lanes, Points, CoeffStep, DataStepX, DataStepY, CoeffType, DataType, CoeffStart>
         sliding_mul_with_start = re.compile(
-            r'(aie::sliding_mul(?:_sym)?_ops\s*<[^>]*?,\s*)'
+            r'((?:::)?aie::sliding_mul(?:_sym)?(?:_ops)?\s*<[^>]*?,\s*)'
             r'(\d+)'  # Last numeric template param that could be CoeffStart
             r'(\s*>)'
         )

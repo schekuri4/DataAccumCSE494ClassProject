@@ -11,6 +11,8 @@ BUG_FAMILY: dict[str, Any] = {
     "match_targets": [
         "aie::pack",
         "aie::unpack",
+        ".unpack()",
+        "unpack(",
         "aie::vector<int32,",
         "aie::vector<int8,"
     ],
@@ -44,7 +46,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
         # with a packable type (int16) and change it to int32 (not directly packable to int8)
         
         # Find aie::pack calls and try to corrupt the input vector's type declaration
-        pack_call_pattern = re.compile(r'aie::pack\s*(<[^>]*>)?\s*\(([^)]+)\)')
+        pack_call_pattern = re.compile(r'(?:::)?aie::pack\s*(<[^>]*>)?\s*\(([^)]+)\)')
         for m in pack_call_pattern.finditer(content):
             start = m.start()
             end = m.end()
@@ -77,7 +79,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
                     })
             else:
                 # No template param on pack - wrap with wrong template
-                replacement = original.replace('aie::pack(', 'aie::pack<int32>(')
+                replacement = re.sub(r'((?:::)?aie::pack)\s*\(', r'\1<int32>(', original, count=1)
                 candidates.append({
                     "file_path": file_path,
                     "bug_type": "pack_unpack_wrong_element_type",
@@ -90,7 +92,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
                 })
 
         # Strategy 2: Mutate aie::unpack calls
-        unpack_call_pattern = re.compile(r'aie::unpack\s*(<[^>]*>)?\s*\(([^)]+)\)')
+        unpack_call_pattern = re.compile(r'(?:::)?aie::unpack\s*(<[^>]*>)?\s*\(([^)]+)\)')
         for m in unpack_call_pattern.finditer(content):
             start = m.start()
             end = m.end()
@@ -119,7 +121,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
                         "description": f"Changed unpack template to incompatible narrower type: '{original}' -> '{replacement}'"
                     })
             else:
-                replacement = original.replace('aie::unpack(', 'aie::unpack<int8>(')
+                replacement = re.sub(r'((?:::)?aie::unpack)\s*\(', r'\1<int8>(', original, count=1)
                 candidates.append({
                     "file_path": file_path,
                     "bug_type": "pack_unpack_wrong_element_type",
@@ -178,6 +180,36 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
                     "replacement": replacement,
                     "description": f"Changed vector element type from int8 to int32 making unpack incompatible: '{original}' -> '{replacement}'"
                 })
+
+        # Strategy 4: member unpack on an accumulator-to-vector conversion.
+        member_unpack_pattern = re.compile(
+            r'(to_vector\s*<\s*)(int8_t|int8|uint8_t|uint8)(\s*>\s*\([^)]*\)\s*\.unpack\s*\(\s*\))'
+        )
+        for m in member_unpack_pattern.finditer(content):
+            candidates.append({
+                "file_path": file_path,
+                "bug_type": "pack_unpack_wrong_element_type",
+                "category": "vector_shuffles_and_permutations",
+                "start": m.start(),
+                "end": m.end(),
+                "original": m.group(0),
+                "replacement": m.group(1) + "int32_t" + m.group(3),
+                "description": "Change the to_vector element type before .unpack() to an incompatible int32_t.",
+            })
+
+        # Strategy 5: legacy free unpack(...) intrinsic.
+        legacy_unpack_pattern = re.compile(r'\bunpack\s*\(([^;\n]+)\)')
+        for m in legacy_unpack_pattern.finditer(content):
+            candidates.append({
+                "file_path": file_path,
+                "bug_type": "pack_unpack_wrong_element_type",
+                "category": "vector_shuffles_and_permutations",
+                "start": m.start(),
+                "end": m.end(),
+                "original": m.group(0),
+                "replacement": "pack(" + m.group(1) + ")",
+                "description": "Replace legacy unpack(...) with pack(...) on the same operands.",
+            })
 
     return candidates
 

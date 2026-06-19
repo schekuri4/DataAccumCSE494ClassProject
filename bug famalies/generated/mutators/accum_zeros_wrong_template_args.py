@@ -1,5 +1,4 @@
 import re
-import copy
 from typing import Any
 
 BUG_FAMILY: dict[str, Any] = {
@@ -12,40 +11,45 @@ BUG_FAMILY: dict[str, Any] = {
         "aie::zeros<acc48",
         "aie::zeros<acc80",
         "aie::zeros<acc64",
-        "aie::accum"
+        "aie::zeros<acc32",
+        "aie::zeros<accfloat",
+        "::aie::zeros<accfloat",
+        "aie::accum",
     ],
-    "mutation_strategy": "Replace a valid aie::zeros<acc48, 8>() initialization with aie::zeros<int32, 8>() or aie::zeros<acc48, 7>(), using either a non-accumulator element type or an invalid lane count for the zeros factory function.",
-    "repair_expectation": "Correct the template arguments to aie::zeros to use a valid accumulator tag (acc48/acc64/acc80) and a supported lane count.",
-    "validation_signal": "WSL Vitis/AIE compile failure with template argument deduction failure or no matching function for aie::zeros.",
+    "mutation_strategy": (
+        "Replace a valid accumulator zeros factory call with either a "
+        "non-accumulator type or an invalid numeric lane count."
+    ),
+    "repair_expectation": (
+        "Restore a valid accumulator tag such as acc48, acc80, accfloat, or "
+        "cacc48 and a supported lane count."
+    ),
+    "validation_signal": (
+        "WSL Vitis/AIE compile failure with template argument deduction "
+        "failure or no matching function for aie::zeros."
+    ),
     "tags": [
         "accum_factory",
         "accumulator_types",
         "aie_zeros",
         "initialization",
-        "template_mismatch"
-    ]
+        "template_mismatch",
+    ],
 }
 
-# Pattern to match aie::zeros<accXX, N>() calls
 _ZEROS_PATTERN = re.compile(
-    r'aie::zeros\s*<\s*(acc(?:48|64|80))\s*,\s*(\d+)\s*>\s*\(\s*\)'
+    r'((?:::)?aie\s*::\s*zeros\s*<\s*)'
+    r'(acc(?:32|48|64|80|float)|cacc(?:48|80)|accfloat)'
+    r'(\s*,\s*)'
+    r'([A-Za-z_][A-Za-z0-9_]*|\d+)'
+    r'(\s*>\s*\(\s*\))'
 )
 
-# Valid lane counts for AIE accumulators (powers of 2, common sizes)
 _VALID_LANE_COUNTS = {4, 8, 16, 32}
-
-# Non-accumulator types to use as replacements
-_NON_ACCUM_TYPES = ["int32", "int16", "float", "cint16"]
 
 
 def _is_kernel_source(file_path: str) -> bool:
-    """Heuristic to identify kernel source files."""
-    extensions = ('.cc', '.cpp', '.c', '.h', '.hpp', '.hxx', '.cxx')
-    lower = file_path.lower()
-    # Accept any C/C++ source/header, especially those with 'kernel' in path
-    if lower.endswith(extensions):
-        return True
-    return False
+    return file_path.lower().endswith((".cc", ".cpp", ".c", ".h", ".hpp", ".hxx", ".cxx"))
 
 
 def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, object]]:
@@ -56,72 +60,63 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
             continue
 
         for match in _ZEROS_PATTERN.finditer(content):
-            acc_type = match.group(1)
-            lane_count_str = match.group(2)
-            lane_count = int(lane_count_str)
+            prefix = match.group(1)
+            acc_type = match.group(2)
+            sep = match.group(3)
+            lane_count_str = match.group(4)
+            suffix = match.group(5)
             original = match.group(0)
-            start = match.start()
-            end = match.end()
 
-            # Mutation strategy 1: Replace accumulator type with non-accumulator type
-            replacement_type = _NON_ACCUM_TYPES[0]  # int32
-            replacement_1 = f"aie::zeros<{replacement_type}, {lane_count_str}>()"
+            replacement = f"{prefix}int32{sep}{lane_count_str}{suffix}"
             candidates.append({
                 "file_path": file_path,
-                "bug_type": "accum_zeros_wrong_template_args",
-                "category": "accumulator_types",
-                "start": start,
-                "end": end,
+                "bug_type": BUG_FAMILY["bug_type"],
+                "category": BUG_FAMILY["category"],
+                "start": match.start(),
+                "end": match.end(),
                 "original": original,
-                "replacement": replacement_1,
+                "replacement": replacement,
                 "description": (
-                    f"Replace valid aie::zeros<{acc_type}, {lane_count_str}>() with "
-                    f"aie::zeros<{replacement_type}, {lane_count_str}>() — "
-                    f"non-accumulator element type causes template argument deduction failure."
-                )
+                    f"Replace accumulator zeros type {acc_type} with int32, "
+                    "which is not a valid accumulator tag for this factory."
+                ),
             })
 
-            # Mutation strategy 2: Replace lane count with invalid value
-            # Pick a lane count that is not a power of 2 or is off-by-one
-            invalid_lane = lane_count - 1 if lane_count > 1 else 3
-            # Make sure it's actually different and likely invalid
-            if invalid_lane in _VALID_LANE_COUNTS:
-                invalid_lane = lane_count + 1
-            replacement_2 = f"aie::zeros<{acc_type}, {invalid_lane}>()"
-            candidates.append({
-                "file_path": file_path,
-                "bug_type": "accum_zeros_wrong_template_args",
-                "category": "accumulator_types",
-                "start": start,
-                "end": end,
-                "original": original,
-                "replacement": replacement_2,
-                "description": (
-                    f"Replace valid aie::zeros<{acc_type}, {lane_count_str}>() with "
-                    f"aie::zeros<{acc_type}, {invalid_lane}>() — "
-                    f"invalid lane count causes no matching function error."
-                )
-            })
+            if lane_count_str.isdigit():
+                lane_count = int(lane_count_str)
+                invalid_lane = lane_count - 1 if lane_count > 1 else 3
+                if invalid_lane in _VALID_LANE_COUNTS:
+                    invalid_lane = lane_count + 1
+                replacement = f"{prefix}{acc_type}{sep}{invalid_lane}{suffix}"
+                candidates.append({
+                    "file_path": file_path,
+                    "bug_type": BUG_FAMILY["bug_type"],
+                    "category": BUG_FAMILY["category"],
+                    "start": match.start(),
+                    "end": match.end(),
+                    "original": original,
+                    "replacement": replacement,
+                    "description": (
+                        f"Change accumulator zeros lane count from {lane_count} "
+                        f"to unsupported value {invalid_lane}."
+                    ),
+                })
 
     return candidates
 
 
 def apply_mutation(project_files: dict[str, str], candidate: dict[str, object]) -> dict[str, str]:
-    new_files = dict(project_files)  # shallow copy of the dict
-
+    new_files = dict(project_files)
     file_path = candidate["file_path"]
     content = new_files[file_path]
-
     start = candidate["start"]
     end = candidate["end"]
     original = candidate["original"]
     replacement = candidate["replacement"]
 
-    # Verify the original text is still at the expected position
     if content[start:end] == original:
         new_content = content[:start] + replacement + content[end:]
     else:
-        # Fallback: find and replace first occurrence
         new_content = content.replace(original, replacement, 1)
 
     new_files[file_path] = new_content

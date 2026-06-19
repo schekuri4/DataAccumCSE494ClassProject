@@ -30,6 +30,10 @@ _STREAM_TO_SCALAR = {
     "input_stream_int32": "int32",
     "input_stream_float": "float",
     "input_stream_int16": "int16",
+    "input_stream<int32>": "int32",
+    "input_stream<float>": "float",
+    "input_stream<int16>": "int16",
+    "input_stream<cint16>": "cint16",
 }
 
 # Pattern to match stream pointer parameter declarations like:
@@ -37,7 +41,8 @@ _STREAM_TO_SCALAR = {
 # input_stream_float * varname
 # input_stream_int16 *varname
 _STREAM_PARAM_PATTERN = re.compile(
-    r'(input_stream_(?:int32|float|int16))\s*\*\s*(\w+)'
+    r'((?:adf::)?input_stream_(?:int32|float|int16)|(?:adf::)?input_stream\s*<\s*(?:int32|float|int16|cint16)\s*>)'
+    r'\s*\*\s*(?:__restrict|restrict)?\s*(\w+)'
 )
 
 
@@ -49,7 +54,7 @@ def _is_kernel_source(filepath):
 
 def _file_uses_readincr(content):
     """Check if file contains readincr calls."""
-    return 'readincr(' in content
+    return 'readincr(' in content or 'readincr_v' in content
 
 
 def find_mutation_candidates(project_files):
@@ -73,7 +78,8 @@ def find_mutation_candidates(project_files):
                 continue
 
             original_text = match.group(0)  # e.g., "input_stream_int32* sin"
-            scalar_type = _STREAM_TO_SCALAR.get(stream_type, "int32")
+            normalized_stream_type = re.sub(r'\s+', '', stream_type.replace('adf::', ''))
+            scalar_type = _STREAM_TO_SCALAR.get(normalized_stream_type, "int32")
 
             # Replace with scalar reference type (e.g., int32& sin)
             replacement_text = f"{scalar_type}& {var_name}"

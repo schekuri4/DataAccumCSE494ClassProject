@@ -32,7 +32,7 @@ BUG_FAMILY = {
 
 # Pattern to match adf::source() or source() calls with a string argument containing a path
 _SOURCE_CALL_PATTERN = re.compile(
-    r'((?:adf::)?source\s*\(\s*\w+\s*,\s*)"([^"]+)"(\s*\))',
+    r'((?:adf::)?source\s*\(\s*[^)]*?\s*\)\s*=\s*)"([^"]+)"(\s*;?)',
     re.MULTILINE
 )
 

@@ -88,7 +88,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
 
         # Pattern 1: aie::mul(a, aie::op_conj(b)) -> aie::mul(aie::op_conj(a), b)
         # Match aie::mul( ... )
-        pattern_mul = re.compile(r'aie::mul\s*\(')
+        pattern_mul = re.compile(r'(?:::)?aie::mul\s*\(')
         for match in pattern_mul.finditer(content):
             # Find the full extent of aie::mul(...)
             open_paren_pos = match.end() - 1  # position of '('
@@ -132,7 +132,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
                 # Reconstruct
                 new_args = [new_first] + [new_second] + [a for a in args[2:]]
                 new_inner = ", ".join(new_args)
-                replacement = "aie::mul(" + new_inner + ")"
+                replacement = content[match.start():open_paren_pos + 1] + new_inner + ")"
 
                 start_pos = match.start()
                 end_pos = close_paren_pos + 1
@@ -162,7 +162,7 @@ def find_mutation_candidates(project_files: dict[str, str]) -> list[dict[str, ob
                     new_first = "aie::op_conj(" + first_arg + ")"
                     new_args = [new_first] + [a for a in args[1:]]
                     new_inner = ", ".join(new_args)
-                    replacement = "aie::mul(" + new_inner + ")"
+                    replacement = content[match.start():open_paren_pos + 1] + new_inner + ")"
 
                     start_pos = match.start()
                     end_pos = close_paren_pos + 1

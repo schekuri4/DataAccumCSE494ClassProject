@@ -21,6 +21,12 @@ _RUNTIME_RATIO_PATTERN = re.compile(
     r'(\s*\))'
 )
 
+_RUNTIME_RATIO_ASSIGNMENT_PATTERN = re.compile(
+    r'((?:adf::)?runtime\s*<\s*ratio\s*>\s*\(\s*[^)]*?\s*\)\s*=\s*)'
+    r'([+-]?(?:\d+(?:\.\d*)?|\.\d+))'
+    r'(\s*;)'
+)
+
 # Invalid replacement values to use
 _INVALID_VALUES = ["1.5", "-0.3", "0.0", "2.0", "-1.0"]
 
@@ -87,6 +93,30 @@ def find_mutation_candidates(project_files):
                 "description": (
                     f"Replace valid runtime<ratio> value '{original_value}' with "
                     f"invalid value '{replacement_value}' to cause a constraint violation."
+                )
+            })
+
+        for match in _RUNTIME_RATIO_ASSIGNMENT_PATTERN.finditer(content):
+            original_value = match.group(2).strip()
+            try:
+                val = float(original_value)
+                if val <= 0.0 or val > 1.0:
+                    continue
+            except ValueError:
+                continue
+
+            replacement_value = "1.5" if val != 1.5 else "-0.3"
+            candidates.append({
+                "file_path": file_path,
+                "bug_type": "invalid_runtime_ratio_literal",
+                "category": "graph_runtime_constraints",
+                "start": match.start(),
+                "end": match.end(),
+                "original": match.group(0),
+                "replacement": match.group(1) + replacement_value + match.group(3),
+                "description": (
+                    f"Replace valid runtime<ratio> assignment value "
+                    f"'{original_value}' with invalid value '{replacement_value}'."
                 )
             })
     

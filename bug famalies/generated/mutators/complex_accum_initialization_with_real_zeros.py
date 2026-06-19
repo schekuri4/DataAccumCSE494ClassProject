@@ -41,13 +41,18 @@ def find_mutation_candidates(project_files):
     # Pattern 1: aie::zeros<cint16, N>() or aie::zeros<cint32, N>() - replace complex type with real type
     # Matches aie::zeros<cint16, ...>() or aie::zeros<cint32, ...>()
     zeros_pattern = re.compile(
-        r'aie::zeros\s*<\s*(cint16|cint32)\s*,\s*([^>]+)\s*>\s*\(\s*\)'
+        r'(?:::)?aie::zeros\s*<\s*(cint16|cint32)\s*,\s*([^>]+)\s*>\s*\(\s*\)'
     )
     
     # Pattern 2: Look for complex accumulator declarations that use aie::zeros with complex types
     # Also match patterns where accum is initialized with zeros
     accum_zeros_pattern = re.compile(
-        r'(aie::zeros\s*<\s*)(cint16|cint32)(\s*,\s*[^>]+\s*>\s*\(\s*\))'
+        r'((?:::)?aie::zeros\s*<\s*)(cint16|cint32)(\s*,\s*[^>]+\s*>\s*\(\s*\))'
+    )
+
+    legacy_cacc_init_pattern = re.compile(
+        r'(\bv([48]|16)cacc48\s+\w+\s*=\s*)'
+        r'(undef_v\2cacc48|null_v\2cacc48)\s*\(\s*\)'
     )
     
     for filepath, content in project_files.items():
@@ -87,6 +92,24 @@ def find_mutation_candidates(project_files):
                 "description": (
                     f"Replace aie::zeros<{complex_type}, N>() with aie::zeros<{real_type}, N>() "
                     f"causing a type mismatch when initializing a complex accumulator with a real vector."
+                )
+            })
+
+        for match in legacy_cacc_init_pattern.finditer(content):
+            lane = match.group(2)
+            original_text = match.group(0)
+            replacement_text = match.group(1) + f"null_v{lane}acc48()"
+            candidates.append({
+                "file_path": filepath,
+                "bug_type": "complex_accum_initialization_with_real_zeros",
+                "category": "complex_intrinsics",
+                "start": match.start(),
+                "end": match.end(),
+                "original": original_text,
+                "replacement": replacement_text,
+                "description": (
+                    "Initialize a legacy complex accumulator with the real "
+                    f"accumulator zero factory null_v{lane}acc48()."
                 )
             })
     
